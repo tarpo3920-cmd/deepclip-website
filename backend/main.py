@@ -17,7 +17,7 @@ import yt_dlp
 from fastapi import (
     FastAPI, UploadFile, File, Form, Header, HTTPException
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from starlette.background import BackgroundTask
 
 # =====================================
@@ -203,11 +203,15 @@ def validate_video_url(url):
 
     try:
         addresses = socket.getaddrinfo(hostname, None)
+
         for item in addresses:
             ip = ipaddress.ip_address(item[4][0])
 
             if not ip.is_global:
-                raise RuntimeError("Private or local addresses are not allowed")
+                raise RuntimeError(
+                    "Private or local addresses are not allowed"
+                )
+
     except socket.gaierror:
         raise RuntimeError("Website address could not be resolved")
 
@@ -345,6 +349,7 @@ async def process_video_job(job_id, video, folder):
         job["message"] = "Translating into Burmese"
 
         burmese = await translate_text(transcript_text, "my")
+
         burmese_recap = await ai_text(
             "Write a natural, easy-to-understand Burmese summary "
             "of this video. Use clear headings and key points.",
@@ -358,6 +363,7 @@ async def process_video_job(job_id, video, folder):
         make_srt(segments, subtitle_file)
 
         recap_file = folder / "recap.txt"
+
         recap_file.write_text(
             "AI VIDEO RECAP\n\n"
             + recap
@@ -423,20 +429,19 @@ async def start_job(video, folder, user):
 # BASIC ROUTES
 # =====================================
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 async def home():
-    return {
-        "name": "DeepClip",
-        "status": "online",
-        "features": [
-            "video-upload",
-            "video-url",
-            "automatic-transcription",
-            "automatic-translation",
-            "ai-recap",
-            "subtitles",
-        ],
-    }
+    index_file = BASE_DIR.parent / "public" / "index.html"
+
+    if not index_file.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="DeepClip frontend not found"
+        )
+
+    return HTMLResponse(
+        content=index_file.read_text(encoding="utf-8")
+    )
 
 
 @app.get("/health")
