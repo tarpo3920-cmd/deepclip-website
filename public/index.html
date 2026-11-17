@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="my"><head>
 <meta name="google-site-verification" content="zbjmSbU82vyUuFTMzmKOTlJtd56nAWZajtj4HCi2CIw" />
@@ -28,6 +29,10 @@ h3{font-size:16px;margin:15px 0 8px}.modes{display:grid;grid-template-columns:re
 .links{display:grid;gap:8px;margin-top:11px}.links a{text-decoration:none;text-align:center;border-radius:13px;padding:12px;background:#f0efff;color:var(--p);font-weight:750;font-size:13px}
 .authbox{display:none}.authbox.show{display:block}.authswitch{color:var(--p);font-size:13px;font-weight:700;cursor:pointer;text-align:center;padding:10px}
 .hidden{display:none!important}.account{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.adminlist{font-size:12px;overflow:auto}.adminlist table{border-collapse:collapse;width:100%;min-width:400px}.adminlist td,.adminlist th{border-bottom:1px solid var(--line);padding:7px;text-align:left}
+.kpay-box{border:1px dashed #c9c7ed;border-radius:17px;padding:15px;background:#faf9ff;text-align:center;margin-top:10px}
+.kpay-preview{display:block;width:100%;max-width:230px;max-height:300px;object-fit:contain;margin:12px auto;border-radius:12px}
+.kpay-status{font-size:13px;color:var(--muted);margin:8px 0}
+.kpay-file-label{display:inline-block;background:#f0efff;color:var(--p);padding:11px 15px;border-radius:12px;font-size:13px;font-weight:750;cursor:pointer;margin:8px 0}
 footer{text-align:center;color:#999bad;font-size:10px;padding:12px}
 @media(min-width:600px){main{padding-top:22px}.panel{padding:20px}}
 </style></head><body>
@@ -61,11 +66,44 @@ footer{text-align:center;color:#999bad;font-size:10px;padding:12px}
 <div class="status" id="status"></div>
 </section>
 <section class="panel result" id="result"><h3>AI Recap ရလဒ်</h3><div class="resulttext" id="recapText"></div><div class="links" id="downloads"></div></section>
-<section class="panel hidden" id="adminPanel"><h3>Admin Dashboard</h3><div class="adminlist" id="adminData"></div><h3>Credit ပေးရန်</h3><form id="creditForm" class="row"><input class="field" id="targetId" type="number" placeholder="User ID" required><input class="field" id="creditAmount" type="number" placeholder="+Credit" required><button class="btn purple">ပေးမယ်</button></form><h3>Premium ဖွင့်/ပိတ်ရန်</h3><form id="premiumForm" class="row"><input class="field" id="premiumUserId" type="number" placeholder="User ID" required><select class="field" id="premiumEnabled"><option value="1">Premium ဖွင့်မယ်</option><option value="0">Premium ပိတ်မယ်</option></select><button class="btn purple">သိမ်းမယ်</button></form><div class="note" id="adminMsg"></div></section>
+
+<section class="panel hidden" id="adminPanel">
+<h3>Admin Dashboard</h3>
+<div class="adminlist" id="adminData"></div>
+<h3>Credit ပေးရန်</h3>
+<form id="creditForm" class="row">
+<input class="field" id="targetId" type="number" placeholder="User ID" required>
+<input class="field" id="creditAmount" type="number" placeholder="+Credit" required>
+<button class="btn purple">ပေးမယ်</button>
+</form>
+<h3>Premium ဖွင့်/ပိတ်ရန်</h3>
+<form id="premiumForm" class="row">
+<input class="field" id="premiumUserId" type="number" placeholder="User ID" required>
+<select class="field" id="premiumEnabled">
+<option value="1">Premium ဖွင့်မယ်</option>
+<option value="0">Premium ပိတ်မယ်</option>
+</select>
+<button class="btn purple">သိမ်းမယ်</button>
+</form>
+
+<h3>KPay QR ငွေလက်ခံပုံ</h3>
+<div class="kpay-box">
+<div class="kpay-status" id="kpayQrStatus">KPay QR ပုံ မတင်ရသေးပါ</div>
+<img id="kpayQrPreview" class="kpay-preview hidden" alt="KPay QR Preview">
+<label class="kpay-file-label" for="kpayQrFile">QR ပုံရွေးရန်</label>
+<input type="file" id="kpayQrFile" accept="image/png,image/jpeg,image/webp">
+<div class="note">PNG / JPG / WEBP · 5MB အထိ</div>
+<button type="button" class="btn purple" id="kpayQrUpload">QR ပုံ Upload တင်မယ်</button>
+</div>
+
+<div class="note" id="adminMsg"></div>
+</section>
 <footer>DeepClip Mobile MVP · AI processing uses your configured API account</footer>
 </main>
 <script>
 const $=s=>document.querySelector(s);let mode="recap",ratio="9:16",fit="crop",lang="my",token=localStorage.getItem("dc_token"),register=false,user=null;
+let kpayObjectUrl=null;
+
 function authHeaders(){return token?{"Authorization":"Bearer "+token}:{}}
 function setUser(u){user=u;$("#credit").textContent=u.is_premium?"PRO":"3/day";$("#accountBtn").textContent=u.email?"Logout":"Login";$("#accountBtn").title=u.email||"";$("#authbox").classList.remove("show");$("#appPanel").classList.toggle("hidden",!u.email);$("#settingsPanel").classList.toggle("hidden",!u.email);if(u.role==="admin")loadAdmin();else $("#adminPanel").classList.add("hidden")}
 async function api(url,opts={}){opts.headers={...(opts.headers||{}),...authHeaders()};let r=await fetch(url,opts),d=await r.json().catch(()=>({detail:"Server error"}));if(!r.ok)throw Error(d.detail||"Request failed");return d}
@@ -77,11 +115,85 @@ $("#videoFile").onchange=e=>$("#filename").textContent=e.target.files[0]?.name||
 document.querySelectorAll(".mode").forEach(b=>b.onclick=()=>{document.querySelectorAll(".mode").forEach(x=>x.classList.remove("active"));b.classList.add("active");mode=b.dataset.mode});
 function group(id,key,cb){document.querySelectorAll(id+" .choice").forEach(b=>b.onclick=()=>{document.querySelectorAll(id+" .choice").forEach(x=>x.classList.remove("active"));b.classList.add("active");cb(b.dataset[key])})}
 group("#ratios","ratio",v=>ratio=v);group("#fit","fit",v=>fit=v);group("#languages","lang",v=>lang=v);
-$("#run").onclick=async()=>{let f=$("#videoFile").files[0];if(!token){$("#authbox").classList.add("show");$("#authMsg").textContent="အသုံးပြုရန် Login/Register ဝင်ပါ။";return}if(!f){alert("Video ဖိုင်ရွေးပါ။");return}
+
+$("#run").onclick=async()=>{
+let f=$("#videoFile").files[0];
+if(!token){$("#authbox").classList.add("show");$("#authMsg").textContent="အသုံးပြုရန် Login/Register ဝင်ပါ။";return}
+if(!f){alert("Video ဖိုင်ရွေးပါ။");return}
 let fd=new FormData();fd.append("file",f);fd.append("language",lang);fd.append("mode",mode);fd.append("ratio",ratio);fd.append("fit_mode",fit);
 $("#run").disabled=true;$("#status").style.display="block";$("#status").textContent="AI က Video ကို စိစစ်နေပါတယ်။ အချိန်ယူနိုင်ပါတယ်…";$("#result").style.display="none";
-try{let d=await api("/api/recap",{method:"POST",body:fd});$("#recapText").textContent=d.recap;let links=[["Formatted Video",d.downloads.video],["Subtitles (.SRT)",d.downloads.srt],["Recap Text",d.downloads.text]];if(d.downloads.highlights)links.unshift(["AI Highlight Clips",d.downloads.highlights]);$("#downloads").innerHTML=links.map(([n,u])=>`<a href="${u}" data-download="${u}">${n} Download</a>`).join("");$("#downloads").querySelectorAll("a").forEach(a=>a.onclick=async e=>{e.preventDefault();try{let r=await fetch(a.dataset.download,{headers:authHeaders()});if(!r.ok)throw Error("Download failed");let blob=await r.blob(),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download=a.textContent.includes("SRT")?"subtitles.srt":a.textContent.includes("Text")?"recap.txt":"deepclip-output.mp4";link.click();URL.revokeObjectURL(url)}catch(err){alert(err.message)}});$("#result").style.display="block";$("#status").textContent=d.highlight_note||"ပြီးပါပြီ။ Download လုပ်နိုင်ပါတယ်။";await refresh()}catch(e){$("#status").textContent="အမှား: "+e.message;await refresh()}finally{$("#run").disabled=false}};
-async function loadAdmin(){try{let d=await api("/api/admin/overview");$("#adminPanel").classList.remove("hidden");$("#adminData").innerHTML="<b>Users</b><table><tr><th>ID</th><th>Email</th><th>Role</th><th>Premium</th></tr>"+d.users.map(u=>`<tr><td>${u.id}</td><td>${u.email}</td><td>${u.role}</td><td>${u.is_premium?"YES":"NO"}</td></tr>`).join("")+"</table><br><b>Recent Jobs</b><table><tr><th>File</th><th>Status</th><th>User</th></tr>"+d.jobs.map(j=>`<tr><td>${j.filename||""}</td><td>${j.status}</td><td>${j.user_id}</td></tr>`).join("")+"</table>"}catch(e){$("#adminMsg").textContent=e.message}}
+try{
+let d=await api("/api/recap",{method:"POST",body:fd});
+$("#recapText").textContent=d.recap;
+let links=[["Formatted Video",d.downloads.video],["Subtitles (.SRT)",d.downloads.srt],["Recap Text",d.downloads.text]];
+if(d.downloads.highlights)links.unshift(["AI Highlight Clips",d.downloads.highlights]);
+$("#downloads").innerHTML=links.map(([n,u])=>`<a href="${u}" data-download="${u}">${n} Download</a>`).join("");
+$("#downloads").querySelectorAll("a").forEach(a=>a.onclick=async e=>{e.preventDefault();try{let r=await fetch(a.dataset.download,{headers:authHeaders()});if(!r.ok)throw Error("Download failed");let blob=await r.blob(),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download=a.textContent.includes("SRT")?"subtitles.srt":a.textContent.includes("Text")?"recap.txt":"deepclip-output.mp4";link.click();URL.revokeObjectURL(url)}catch(err){alert(err.message)}});
+$("#result").style.display="block";$("#status").textContent=d.highlight_note||"ပြီးပါပြီ။ Download လုပ်နိုင်ပါတယ်။";await refresh()
+}catch(e){$("#status").textContent="အမှား: "+e.message;await refresh()}
+finally{$("#run").disabled=false}
+};
+
+/* Admin Dashboard */
+async function loadAdmin(){
+try{
+let d=await api("/api/admin/overview");
+$("#adminPanel").classList.remove("hidden");
+$("#adminData").innerHTML="<b>Users</b><table><tr><th>ID</th><th>Email</th><th>Role</th><th>Premium</th></tr>"+d.users.map(u=>`<tr><td>${u.id}</td><td>${u.email}</td><td>${u.role}</td><td>${u.is_premium?"YES":"NO"}</td></tr>`).join("")+"</table><br><b>Recent Jobs</b><table><tr><th>File</th><th>Status</th><th>User</th></tr>"+d.jobs.map(j=>`<tr><td>${j.filename||""}</td><td>${j.status}</td><td>${j.user_id}</td></tr>`).join("")+"</table>";
+await loadKpayQr();
+}catch(e){$("#adminMsg").textContent=e.message}
+}
+
+/* Admin သာ KPay QR ကို ဖတ်နိုင်ရန် */
+async function loadKpayQr(){
+const status=$("#kpayQrStatus");
+const preview=$("#kpayQrPreview");
+try{
+const response=await fetch("/api/admin/payment-qr",{headers:authHeaders()});
+if(!response.ok){
+preview.classList.add("hidden");
+preview.removeAttribute("src");
+status.textContent=response.status===404?"KPay QR ပုံ မတင်ရသေးပါ":"KPay QR ပုံကို ဖတ်မရပါ။ Backend ကို စစ်ဆေးပါ။";
+return;
+}
+const blob=await response.blob();
+if(kpayObjectUrl)URL.revokeObjectURL(kpayObjectUrl);
+kpayObjectUrl=URL.createObjectURL(blob);
+preview.src=kpayObjectUrl;
+preview.classList.remove("hidden");
+status.textContent="KPay QR ပုံ တင်ထားပြီးပါပြီ။";
+}catch(e){
+preview.classList.add("hidden");
+status.textContent="QR ပုံကို ဖတ်မရပါ။";
+}
+}
+
+/* KPay QR Upload */
+$("#kpayQrUpload").onclick=async()=>{
+const file=$("#kpayQrFile").files[0];
+const status=$("#kpayQrStatus");
+const button=$("#kpayQrUpload");
+if(!token){status.textContent="Admin အကောင့်ဝင်ပါ။";return}
+if(!file){status.textContent="အရင်ဆုံး QR ပုံရွေးပါ။";return}
+const allowed=["image/png","image/jpeg","image/webp"];
+if(!allowed.includes(file.type)){status.textContent="PNG, JPG သို့မဟုတ် WEBP ပုံကိုသာ ရွေးပါ။";return}
+if(file.size>5*1024*1024){status.textContent="ပုံအရွယ်အစား 5MB ထက် မကျော်ရပါ။";return}
+const fd=new FormData();
+fd.append("file",file);
+button.disabled=true;
+status.textContent="QR ပုံ Upload တင်နေပါတယ်…";
+try{
+const result=await api("/api/admin/payment-qr",{method:"POST",body:fd});
+status.textContent=result.message||"QR ပုံ Upload အောင်မြင်ပါသည်။";
+$("#kpayQrFile").value="";
+await loadKpayQr();
+}catch(e){
+status.textContent="Upload မအောင်မြင်ပါ: "+e.message;
+}finally{
+button.disabled=false;
+}
+};
+
 $("#creditForm").onsubmit=async e=>{e.preventDefault();let fd=new FormData();fd.append("user_id",$("#targetId").value);fd.append("amount",$("#creditAmount").value);try{await api("/api/admin/credits",{method:"POST",body:fd});$("#adminMsg").textContent="Credit ပြင်ဆင်ပြီးပါပြီ။";loadAdmin()}catch(err){$("#adminMsg").textContent=err.message}};
 $("#premiumForm").onsubmit=async e=>{e.preventDefault();let fd=new FormData();fd.append("user_id",$("#premiumUserId").value);fd.append("enabled",$("#premiumEnabled").value);try{await api("/api/admin/premium",{method:"POST",body:fd});$("#adminMsg").textContent="Premium status ပြင်ဆင်ပြီးပါပြီ။";loadAdmin()}catch(err){$("#adminMsg").textContent=err.message}};
 refresh();
