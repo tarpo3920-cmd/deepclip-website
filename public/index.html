@@ -33,12 +33,23 @@ h3{font-size:16px;margin:15px 0 8px}.modes{display:grid;grid-template-columns:re
 .kpay-preview{display:block;width:100%;max-width:230px;max-height:300px;object-fit:contain;margin:12px auto;border-radius:12px}
 .kpay-status{font-size:13px;color:var(--muted);margin:8px 0}
 .kpay-file-label{display:inline-block;background:#f0efff;color:var(--p);padding:11px 15px;border-radius:12px;font-size:13px;font-weight:750;cursor:pointer;margin:8px 0}
+.public-kpay-image{display:block;width:100%;max-width:280px;max-height:360px;object-fit:contain;margin:14px auto;border-radius:12px}
+.public-kpay-status{font-size:13px;color:var(--muted);text-align:center;line-height:1.7;padding:12px}
 footer{text-align:center;color:#999bad;font-size:10px;padding:12px}
 @media(min-width:600px){main{padding-top:22px}.panel{padding:20px}}
 </style></head><body>
 <header><div class="brand"><div class="logo">▶</div>DeepClip</div><div class="right"><span>Auto Recap</span><div class="credit" id="credit">3</div><button class="btn light" id="accountBtn">Login</button></div></header>
 <main><div class="note" id="tierNote" style="text-align:center">Free အသုံးပြုသူများ တစ်ရက် ၃ ကြိမ် · Premium ဖြင့် ပိုမိုအသုံးပြုနိုင်သည်</div>
 <div class="panel" style="text-align:center;margin-top:10px"><b>PREMIUM MEMBERSHIP</b><div style="font-size:28px;font-weight:850;color:#5145df;margin:6px 0">20,000 Ks <span style="font-size:13px;color:#777b8d">/ လ</span></div><div class="hint">Free: တစ်ရက် ၃ ကြိမ် · Premium: နေ့စဉ် ၃ ကြိမ် ကန့်သတ်ချက်မရှိ</div></div>
+
+<!-- Customer များအတွက် Public KPay QR -->
+<section class="panel" id="publicKpayPanel">
+<h3 style="text-align:center">KPay ဖြင့် ငွေပေးချေရန်</h3>
+<div class="public-kpay-status" id="publicKpayStatus">KPay QR ပုံကို ဖတ်နေပါတယ်…</div>
+<img id="publicKpayQr" class="public-kpay-image hidden" alt="DeepClip KPay Payment QR">
+<div class="note" style="text-align:center">ငွေပေးချေရန် အပေါ်က QR Code ကို KPay ဖြင့် Scan ဖတ်ပါ။</div>
+</section>
+
 <section class="panel authbox" id="authbox">
 <h3 id="authTitle">အကောင့်ဝင်ရန်</h3><form id="authForm">
 <input class="field" id="email" type="email" placeholder="Email" required autocomplete="email">
@@ -116,6 +127,30 @@ document.querySelectorAll(".mode").forEach(b=>b.onclick=()=>{document.querySelec
 function group(id,key,cb){document.querySelectorAll(id+" .choice").forEach(b=>b.onclick=()=>{document.querySelectorAll(id+" .choice").forEach(x=>x.classList.remove("active"));b.classList.add("active");cb(b.dataset[key])})}
 group("#ratios","ratio",v=>ratio=v);group("#fit","fit",v=>fit=v);group("#languages","lang",v=>lang=v);
 
+/* Customer များအတွက် Public KPay QR ကို ဖတ်ခြင်း */
+async function loadPublicKpayQr(){
+const status=$("#publicKpayStatus");
+const image=$("#publicKpayQr");
+try{
+const response=await fetch("/api/payment-qr");
+if(!response.ok){
+image.classList.add("hidden");
+status.textContent=response.status===404?"KPay QR ပုံ မတင်ရသေးပါ။ Admin မှ QR ပုံတင်ပြီးပါက ဒီနေရာမှာ ပေါ်လာပါမယ်။":"KPay QR ပုံကို ယခုဖတ်မရသေးပါ။";
+return;
+}
+const blob=await response.blob();
+if(!blob.type.startsWith("image/"))throw Error("Invalid image");
+const imageUrl=URL.createObjectURL(blob);
+image.onload=()=>URL.revokeObjectURL(imageUrl);
+image.src=imageUrl;
+image.classList.remove("hidden");
+status.textContent="KPay QR ဖြင့် ငွေပေးချေနိုင်ပါပြီ။";
+}catch(error){
+image.classList.add("hidden");
+status.textContent="KPay QR ပုံကို ယခုဖတ်မရသေးပါ။";
+}
+}
+
 $("#run").onclick=async()=>{
 let f=$("#videoFile").files[0];
 if(!token){$("#authbox").classList.add("show");$("#authMsg").textContent="အသုံးပြုရန် Login/Register ဝင်ပါ။";return}
@@ -187,6 +222,7 @@ const result=await api("/api/admin/payment-qr",{method:"POST",body:fd});
 status.textContent=result.message||"QR ပုံ Upload အောင်မြင်ပါသည်။";
 $("#kpayQrFile").value="";
 await loadKpayQr();
+await loadPublicKpayQr();
 }catch(e){
 status.textContent="Upload မအောင်မြင်ပါ: "+e.message;
 }finally{
@@ -196,5 +232,7 @@ button.disabled=false;
 
 $("#creditForm").onsubmit=async e=>{e.preventDefault();let fd=new FormData();fd.append("user_id",$("#targetId").value);fd.append("amount",$("#creditAmount").value);try{await api("/api/admin/credits",{method:"POST",body:fd});$("#adminMsg").textContent="Credit ပြင်ဆင်ပြီးပါပြီ။";loadAdmin()}catch(err){$("#adminMsg").textContent=err.message}};
 $("#premiumForm").onsubmit=async e=>{e.preventDefault();let fd=new FormData();fd.append("user_id",$("#premiumUserId").value);fd.append("enabled",$("#premiumEnabled").value);try{await api("/api/admin/premium",{method:"POST",body:fd});$("#adminMsg").textContent="Premium status ပြင်ဆင်ပြီးပါပြီ။";loadAdmin()}catch(err){$("#adminMsg").textContent=err.message}};
+
+loadPublicKpayQr();
 refresh();
 </script></body></html>
