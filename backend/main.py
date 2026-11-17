@@ -1,4 +1,3 @@
-
 import os
 import re
 import sys
@@ -41,6 +40,8 @@ API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 TRANSCRIBE_MODEL = os.getenv("OPENAI_TRANSCRIBE_MODEL", "whisper-1")
 TEXT_MODEL = os.getenv("OPENAI_TEXT_MODEL", "gpt-4.1-mini")
+TTS_MODEL = os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
+TTS_VOICE = os.getenv("OPENAI_TTS_VOICE", "alloy")
 
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@example.com").lower().strip()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "change-this-admin-password")
@@ -48,6 +49,7 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "change-this-admin-password")
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "500"))
 MAX_AUDIO_MB = int(os.getenv("MAX_AUDIO_MB", "24"))
 STARTER_CREDITS = int(os.getenv("STARTER_CREDITS", "5"))
+AUDIO_CHUNK_SECONDS = int(os.getenv("AUDIO_CHUNK_SECONDS", "480"))
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 GITHUB_REPOSITORY = os.getenv(
@@ -58,6 +60,11 @@ GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
 KPAY_GITHUB_PATH = "storage/kpay"
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm"}
 MAX_URL_DOWNLOAD_SECONDS = 900
+
+ALLOWED_TTS_VOICES = {
+    "alloy", "ash", "ballad", "coral", "echo", "fable",
+    "onyx", "nova", "sage", "shimmer", "verse", "marin", "cedar"
+}
 
 app = FastAPI(title="DeepClip AI Video Recap")
 
@@ -418,7 +425,7 @@ async def get_public_payment_qr():
 
 
 # ==================================================
-# DAILY LIMIT
+# DAILY LIMIT AND JOBS
 # ==================================================
 
 def myanmar_today():
@@ -467,7 +474,7 @@ def create_job_with_daily_limit(uid, job_id, filename):
 
 
 # ==================================================
-# FFMPEG AND SRT
+# FFMPEG HELPERS
 # ==================================================
 
 def run_ffmpeg(args, timeout=3600):
@@ -483,8 +490,26 @@ def run_ffmpeg(args, timeout=3600):
 
     if process.returncode != 0:
         logger.error("FFmpeg: %s", (process.stderr or "")[-3000:])
-        raise HTTPException(422, "Video ကို process မလုပ်နိုင်ပါ။")
+        raise HTTPException(422, "Media processing မအောင်မြင်ပါ။")
     return process
+
+
+def probe_duration(path):
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(path)
+            ],
+            capture_output=True, text=True, timeout=60
+        )
+        if result.returncode != 0:
+            return 0
+        return max(0, float(result.stdout.strip()))
+    except Exception:
+        return 0
 
 
 def srt_time(seconds):
@@ -510,18 +535,22 @@ def make_srt(segments, text_key="text"):
 
 
 # ==================================================
-# OPENAI
+# OPENAI API
 # ==================================================
 
-async def transcribe(path):
+def openai_headers():
     if not API_KEY:
         raise HTTPException(503, "OPENAI_API_KEY မထည့်ရသေးပါ။")
+    return {"Authorization": f"Bearer {API_KEY}"}
+
+
+async def transcribe(path):
     if not path.is_file():
         raise HTTPException(400, "အသံဖိုင် မတွေ့ပါ။")
     if path.stat().st_size > MAX_AUDIO_MB * 1024 * 1024:
         raise HTTPException(
             413,
-            f"အသံဖိုင် {MAX_AUDIO_MB}MB ကျော်နေပါသည်။ ပိုတိုသော Video သုံးပါ။"
+            f"အသံဖိုင် {MAX_AUDIO_MB}MB ကျော်နေပါသည်။"
         )
 
     try:
@@ -529,7 +558,7 @@ async def transcribe(path):
             with path.open("rb") as audio_file:
                 response = await client.post(
                     "https://api.openai.com/v1/audio/transcriptions",
-                    headers={"Authorization": f"Bearer {API_KEY}"},
+                    headers=openai_headers(),
                     data={
                         "model": TRANSCRIBE_MODEL,
                         "response_format": "verbose_json"
@@ -559,10 +588,74 @@ async def transcribe(path):
         raise HTTPException(502, "Transcription Data ဖတ်မရပါ။")
 
 
-async def ai_text(system, prompt):
-    if not API_KEY:
-        raise HTTPException(503, "OpenAI API Key မထည့်ရသေးပါ။")
+async def transcribe_long_audio(audio, folder):
+    """
+    Audio ကြာချိန်များလျှင် ၈ မိနစ်စီခွဲပြီး Transcribe လုပ်သည်။
+    Segment timestamp များကို မူရင်း Video အချိန်နှင့် ကိုက်ညီအောင် ပြန်ပေါင်းသည်။
+    """
+    duration = probe_duration(audio)
+    if duration <= 0:
+        return await transcribe(audio)
 
+    if audio.stat().st_size <= MAX_AUDIO_MB * 1024 * 1024:
+        return await transcribe(audio)
+
+    all_segments = []
+    all_text = []
+    detected_language = "unknown"
+
+    chunk_seconds = max(120, min(AUDIO_CHUNK_SECONDS, 600))
+    total_chunks = int((duration + chunk_seconds - 1) // chunk_seconds)
+
+    for index in range(total_chunks):
+        start = index * chunk_seconds
+        chunk_path = folder / f"audio_chunk_{index:04d}.mp3"
+
+        run_ffmpeg([
+            "-ss", str(start),
+            "-i", str(audio),
+            "-t", str(chunk_seconds),
+            "-vn", "-ac", "1", "-ar", "16000",
+            "-b:a", "48k",
+            str(chunk_path)
+        ], timeout=600)
+
+        if not chunk_path.exists() or not chunk_path.stat().st_size:
+            raise HTTPException(422, "Audio အပိုင်းခွဲ၍ မရပါ။")
+
+        if chunk_path.stat().st_size > MAX_AUDIO_MB * 1024 * 1024:
+            raise HTTPException(
+                413,
+                "Audio အပိုင်းတစ်ခုသည် သတ်မှတ်ထားသော အရွယ်အစားထက် ကြီးနေပါသည်။"
+            )
+
+        result = await transcribe(chunk_path)
+        if index == 0:
+            detected_language = result.get("language", "unknown")
+
+        chunk_text = (result.get("text") or "").strip()
+        if chunk_text:
+            all_text.append(chunk_text)
+
+        for segment in result.get("segments", []):
+            item = dict(segment)
+            item["start"] = float(item.get("start", 0)) + start
+            item["end"] = float(item.get("end", 0)) + start
+            all_segments.append(item)
+
+        try:
+            chunk_path.unlink()
+        except OSError:
+            pass
+
+    return {
+        "text": " ".join(all_text).strip(),
+        "language": detected_language,
+        "segments": all_segments
+    }
+
+
+async def ai_text(system, prompt):
     payload = {
         "model": TEXT_MODEL,
         "messages": [
@@ -577,7 +670,7 @@ async def ai_text(system, prompt):
             response = await client.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {API_KEY}",
+                    **openai_headers(),
                     "Content-Type": "application/json"
                 },
                 json=payload
@@ -600,6 +693,101 @@ async def ai_text(system, prompt):
         raise HTTPException(502, "AI မှ စာသားပြန်မရပါ။")
 
 
+async def generate_speech(text, folder, voice=None):
+    """
+    AI Voice ကို MP3 ထုတ်ပေးသည်။
+    စာသားရှည်လျှင် အပိုင်းခွဲထုတ်ပြီး FFmpeg ဖြင့် ပေါင်းသည်။
+    """
+    if not text.strip():
+        raise HTTPException(400, "Voice ထုတ်ရန် စာသားမရှိပါ။")
+
+    voice = voice or TTS_VOICE
+    if voice not in ALLOWED_TTS_VOICES:
+        voice = TTS_VOICE
+
+    chunks = []
+    remaining = text.strip()
+
+    while remaining:
+        if len(remaining) <= 3500:
+            chunks.append(remaining)
+            break
+
+        cut = remaining.rfind("။", 0, 3500)
+        if cut < 1000:
+            cut = remaining.rfind(" ", 0, 3500)
+        if cut < 1000:
+            cut = 3500
+
+        chunks.append(remaining[:cut].strip())
+        remaining = remaining[cut:].strip()
+
+    audio_files = []
+
+    for index, chunk in enumerate(chunks):
+        payload = {
+            "model": TTS_MODEL,
+            "voice": voice,
+            "input": chunk,
+            "instructions": (
+                "Speak naturally and clearly in Burmese language. "
+                "Use a warm, understandable narration style. "
+                "Pronounce Burmese words carefully."
+            ),
+            "response_format": "mp3"
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=300) as client:
+                response = await client.post(
+                    "https://api.openai.com/v1/audio/speech",
+                    headers={
+                        **openai_headers(),
+                        "Content-Type": "application/json"
+                    },
+                    json=payload
+                )
+        except httpx.TimeoutException:
+            raise HTTPException(504, "AI Voice ထုတ်ရန် အချိန်ကုန်သွားပါတယ်။")
+        except httpx.RequestError:
+            raise HTTPException(502, "AI Voice Server ကို ဆက်သွယ်မရပါ။")
+
+        if response.status_code >= 400:
+            logger.error("TTS error: %s", response.text[:1500])
+            raise HTTPException(
+                502,
+                "AI Voice မထုတ်နိုင်ပါ။ TTS Model, API Key, Billing စစ်ပါ။"
+            )
+
+        chunk_file = folder / f"voice_chunk_{index:04d}.mp3"
+        chunk_file.write_bytes(response.content)
+        audio_files.append(chunk_file)
+
+    if len(audio_files) == 1:
+        output = folder / "voice.mp3"
+        shutil.copy2(audio_files[0], output)
+        return output
+
+    list_file = folder / "voice_concat.txt"
+    list_file.write_text(
+        "".join(
+            "file '" + p.name.replace("'", "") + "'\n"
+            for p in audio_files
+        ),
+        encoding="utf-8"
+    )
+
+    output = folder / "voice.mp3"
+    run_ffmpeg([
+        "-f", "concat", "-safe", "0",
+        "-i", str(list_file),
+        "-c:a", "libmp3lame", "-b:a", "128k",
+        str(output)
+    ], timeout=900)
+
+    return output
+
+
 def parse_json_array(raw):
     raw = raw.strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
@@ -614,16 +802,11 @@ def parse_json_array(raw):
 
 
 async def translate_segments_to_burmese(segments):
-    """
-    Translate subtitle text into Burmese.
-    Segment timing is kept from the original transcription.
-    """
     if not segments:
         return []
 
     translated = []
 
-    # Small batches reduce output truncation.
     for offset in range(0, len(segments), 25):
         batch = segments[offset:offset + 25]
         items = [
@@ -639,7 +822,7 @@ async def translate_segments_to_burmese(segments):
                 "You are a professional subtitle translator. "
                 "Translate every supplied subtitle into natural, clear Burmese. "
                 "Keep names, numbers and meaning accurate. "
-                "Do not summarize. Do not omit any item. "
+                "Do not summarize or omit any item. "
                 "Return ONLY a valid JSON array. "
                 "Each item must have id and translation fields."
             ),
@@ -659,7 +842,6 @@ async def translate_segments_to_burmese(segments):
                 global_id = offset + i
                 text = mapping.get(global_id, "")
                 if not text:
-                    # Fallback: preserve source text instead of losing a subtitle.
                     text = (original.get("text") or "").strip()
 
                 translated.append({
@@ -681,7 +863,7 @@ async def translate_segments_to_burmese(segments):
 
 
 # ==================================================
-# VIDEO FORMAT AND HIGHLIGHTS
+# VIDEO FORMAT, SUBTITLES AND HIGHLIGHTS
 # ==================================================
 
 def dimensions(ratio):
@@ -695,6 +877,7 @@ def dimensions(ratio):
 
 def format_filter(ratio, fit):
     width, height = dimensions(ratio)
+
     if fit == "blur":
         return (
             f"[0:v]split=2[bg][fg];"
@@ -705,11 +888,60 @@ def format_filter(ratio, fit):
             f"force_original_aspect_ratio=decrease[front];"
             f"[blur][front]overlay=(W-w)/2:(H-h)/2,setsar=1[v]"
         )
+
     return (
         f"[0:v]scale={width}:{height}:"
         f"force_original_aspect_ratio=increase,"
         f"crop={width}:{height},setsar=1[v]"
     )
+
+
+def subtitle_filter_path(path):
+    value = str(path.resolve())
+    value = value.replace("\\", "/")
+    value = value.replace(":", r"\:")
+    value = value.replace("'", r"\'")
+    value = value.replace(",", r"\,")
+    return value
+
+
+def burn_subtitles_to_video(source, subtitle_file, output, ratio, fit):
+    """
+    Subtitle ကို Video ပေါ်မှာ Burn လုပ်သည်။
+    Render FFmpeg တွင် subtitles/libass မပါလျှင် error ကို log လုပ်ပြီး
+    Caller က subtitle မပါသော output ကို fallback လုပ်နိုင်သည်။
+    """
+    width, height = dimensions(ratio)
+    video_filter = format_filter(ratio, fit)
+    subtitle_path = subtitle_filter_path(subtitle_file)
+
+    style = (
+        "FontName=Noto Sans Myanmar,"
+        "FontSize=20,"
+        "PrimaryColour=&H00FFFFFF,"
+        "OutlineColour=&H00000000,"
+        "BorderStyle=1,"
+        "Outline=2,"
+        "Shadow=1,"
+        "Alignment=2,"
+        "MarginV=45"
+    )
+
+    graph = (
+        video_filter.replace("[v]", "[formatted]") +
+        f";[formatted]subtitles='{subtitle_path}':"
+        f"force_style='{style}',scale={width}:{height}[v]"
+    )
+
+    run_ffmpeg([
+        "-i", str(source),
+        "-filter_complex", graph,
+        "-map", "[v]", "-map", "0:a?",
+        "-c:v", "libx264", "-preset", "veryfast",
+        "-crf", "23", "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart",
+        str(output)
+    ], timeout=2400)
 
 
 async def make_highlights(transcript, segments, folder, ratio, fit):
@@ -742,16 +974,26 @@ async def make_highlights(transcript, segments, folder, ratio, fit):
         clips = []
 
     valid = []
+    duration = probe_duration(
+        next(iter(folder.glob("source_video.*")), folder / "missing")
+    )
+
     for clip in clips:
         try:
             start = max(0, float(clip["start"]))
             end = float(clip["end"])
+            if duration:
+                end = min(end, duration)
             if 6 <= end - start <= 45:
                 valid.append((start, end))
         except Exception:
             pass
 
-    source_files = list(folder.glob("source_video.*"))
+    source_files = [
+        p for p in folder.glob("source_video.*")
+        if p.is_file() and p.suffix.lower() in ALLOWED_VIDEO_EXTENSIONS
+    ]
+
     if not source_files or not valid:
         return None, "Highlight ဖန်တီးရန် အချက်အလက်မလုံလောက်ပါ။"
 
@@ -760,7 +1002,10 @@ async def make_highlights(transcript, segments, folder, ratio, fit):
         piece = folder / f"clip_{i}.mp4"
         run_ffmpeg([
             "-ss", str(start), "-i", str(source_files[0]),
-            "-t", str(end - start), "-c", "copy", str(piece)
+            "-t", str(end - start),
+            "-c:v", "libx264", "-preset", "veryfast",
+            "-crf", "23", "-c:a", "aac",
+            str(piece)
         ], timeout=600)
         if piece.exists() and piece.stat().st_size:
             pieces.append(piece)
@@ -780,7 +1025,8 @@ async def make_highlights(transcript, segments, folder, ratio, fit):
     joined = folder / "joined.mp4"
     run_ffmpeg([
         "-f", "concat", "-safe", "0",
-        "-i", str(listfile), "-c", "copy", str(joined)
+        "-i", str(listfile),
+        "-c", "copy", str(joined)
     ], timeout=1200)
 
     output = folder / "highlights.mp4"
@@ -811,7 +1057,11 @@ def validate_video_url(url):
         raise HTTPException(400, "HTTPS URL ကိုသာ အသုံးပြုပါ။")
     if parsed.username or parsed.password:
         raise HTTPException(400, "ဒီ URL ကို အသုံးပြု၍မရပါ။")
-    if parsed.port not in (None, 443):
+
+    try:
+        if parsed.port not in (None, 443):
+            raise HTTPException(400, "URL Port မမှန်ပါ။")
+    except ValueError:
         raise HTTPException(400, "URL Port မမှန်ပါ။")
 
     allowed = ("youtube.com", "youtu.be", "tiktok.com")
@@ -871,10 +1121,12 @@ def download_public_video(url, folder):
 
 async def process_video(
     source, original_filename, user,
-    language, mode, ratio, fit_mode, job, folder
+    language, mode, ratio, fit_mode, job, folder,
+    voice_enabled=False, voice_name=None, burn_subtitles=False
 ):
     audio = folder / "audio.mp3"
     output = folder / "formatted.mp4"
+    subtitle_output = folder / "formatted_subtitled.mp4"
     source_srt = folder / "source_subtitles.srt"
     burmese_srt = folder / "subtitles.srt"
     recapfile = folder / "recap.txt"
@@ -886,6 +1138,9 @@ async def process_video(
         if not source.is_file() or source.stat().st_size == 0:
             raise HTTPException(400, "Video ဖိုင်အလွတ် ဖြစ်နေပါသည်။")
 
+        if source.stat().st_size > MAX_UPLOAD_MB * 1024 * 1024:
+            raise HTTPException(413, "Video ဖိုင်အရွယ်အစား ကျော်နေပါသည်။")
+
         run_ffmpeg([
             "-i", str(source), "-vn", "-ac", "1",
             "-ar", "16000", "-b:a", "64k", str(audio)
@@ -894,8 +1149,9 @@ async def process_video(
         if not audio.exists() or not audio.stat().st_size:
             raise HTTPException(422, "Video မှ အသံထုတ်မရပါ။")
 
-        transcript_data = await transcribe(audio)
+        transcript_data = await transcribe_long_audio(audio, folder)
         transcript = (transcript_data.get("text") or "").strip()
+
         if not transcript:
             raise HTTPException(422, "အသံမှ စာသားမရပါ။")
 
@@ -908,13 +1164,11 @@ async def process_video(
                 "AI မှ စာတန်းထိုး Timestamp မရရှိပါ။ ပြန်စမ်းပါ။"
             )
 
-        # Original-language SRT
         source_srt.write_text(
             make_srt(segments),
             encoding="utf-8"
         )
 
-        # Translate each subtitle into Burmese, preserving timestamps.
         burmese_segments = await translate_segments_to_burmese(segments)
         burmese_srt.write_text(
             make_srt(burmese_segments),
@@ -928,9 +1182,15 @@ async def process_video(
         }[language]
 
         if mode == "pro":
-            detail = "Provide a detailed structured recap with headings and key points."
+            detail = (
+                "Provide a detailed structured recap with headings "
+                "and key points."
+            )
         elif mode == "subtitle":
-            detail = "Provide a brief description of the video topic and key context."
+            detail = (
+                "Provide a brief description of the video topic "
+                "and key context."
+            )
         else:
             detail = "Provide a concise recap with key bullet points."
 
@@ -942,8 +1202,10 @@ async def process_video(
             ),
             "Summarize this transcript:\n\n" + transcript[:90000]
         )
+
         recapfile.write_text(recap_text, encoding="utf-8")
 
+        # Video ratio conversion
         run_ffmpeg([
             "-i", str(source),
             "-filter_complex", format_filter(ratio, fit_mode),
@@ -962,6 +1224,8 @@ async def process_video(
             "transcript": transcript[:10000],
             "detected_language": detected_language,
             "subtitle_language": "my",
+            "subtitles_burned_in": False,
+            "voice_generated": False,
             "downloads": {
                 "video": f"/api/download/{job}/video",
                 "srt": f"/api/download/{job}/srt",
@@ -969,6 +1233,52 @@ async def process_video(
                 "text": f"/api/download/{job}/text"
             }
         }
+
+        # Optional hardcoded Burmese subtitles
+        if burn_subtitles:
+            try:
+                burn_subtitles_to_video(
+                    source, burmese_srt, subtitle_output, ratio, fit_mode
+                )
+                if subtitle_output.exists() and subtitle_output.stat().st_size:
+                    shutil.copy2(subtitle_output, output)
+                    result["subtitles_burned_in"] = True
+            except Exception as exc:
+                logger.warning(
+                    "Subtitle burn-in unavailable for job %s: %s",
+                    job, str(exc)
+                )
+                result["subtitle_note"] = (
+                    "Video ထဲ Subtitle ထည့်မရပါ။ SRT ဖိုင်ကို Download လုပ်နိုင်ပါသည်။"
+                )
+
+        # Optional Burmese AI narration
+        if voice_enabled:
+            voice_file = await generate_speech(
+                recap_text, folder, voice_name
+            )
+            if not voice_file.exists() or not voice_file.stat().st_size:
+                raise HTTPException(500, "AI Voice ဖိုင် မရရှိပါ။")
+
+            narrated = folder / "narrated.mp4"
+            run_ffmpeg([
+                "-i", str(output),
+                "-i", str(voice_file),
+                "-map", "0:v:0",
+                "-map", "1:a:0",
+                "-c:v", "copy",
+                "-c:a", "aac", "-b:a", "128k",
+                "-shortest",
+                "-movflags", "+faststart",
+                str(narrated)
+            ], timeout=1800)
+
+            if narrated.exists() and narrated.stat().st_size:
+                shutil.copy2(narrated, output)
+                result["voice_generated"] = True
+                result["downloads"]["voice"] = (
+                    f"/api/download/{job}/voice"
+                )
 
         if mode == "pro":
             highlight, error = await make_highlights(
@@ -1058,7 +1368,9 @@ async def health():
         "ok": True,
         "ai_configured": bool(API_KEY),
         "transcribe_model": TRANSCRIBE_MODEL,
-        "text_model": TEXT_MODEL
+        "text_model": TEXT_MODEL,
+        "tts_model": TTS_MODEL,
+        "tts_configured": bool(API_KEY)
     }
 
 
@@ -1148,6 +1460,9 @@ async def recap(
     mode: str = Form("recap"),
     ratio: str = Form("9:16"),
     fit_mode: str = Form("crop"),
+    voice_enabled: bool = Form(False),
+    voice_name: str = Form(TTS_VOICE),
+    burn_subtitles: bool = Form(False),
     authorization: Optional[str] = Header(None)
 ):
     user = current_user(authorization)
@@ -1184,12 +1499,20 @@ async def recap(
 
         return await process_video(
             source, filename or "uploaded-video", user,
-            language, mode, ratio, fit_mode, job, folder
+            language, mode, ratio, fit_mode, job, folder,
+            voice_enabled, voice_name, burn_subtitles
         )
+
     except Exception:
-        if not (folder / "source_video" + Path(suffix)).exists():
-            pass
+        with db() as con:
+            exists = con.execute(
+                "SELECT id FROM jobs WHERE id=?", (job,)
+            ).fetchone()
+
+        if not exists:
+            shutil.rmtree(folder, ignore_errors=True)
         raise
+
     finally:
         await file.close()
 
@@ -1205,6 +1528,9 @@ async def recap_url(
     mode: str = Form("recap"),
     ratio: str = Form("9:16"),
     fit_mode: str = Form("crop"),
+    voice_enabled: bool = Form(False),
+    voice_name: str = Form(TTS_VOICE),
+    burn_subtitles: bool = Form(False),
     authorization: Optional[str] = Header(None)
 ):
     user = current_user(authorization)
@@ -1219,7 +1545,8 @@ async def recap_url(
         source = download_public_video(safe_url, folder)
         return await process_video(
             source, "video-from-url" + source.suffix, user,
-            language, mode, ratio, fit_mode, job, folder
+            language, mode, ratio, fit_mode, job, folder,
+            voice_enabled, voice_name, burn_subtitles
         )
     except Exception:
         with db() as con:
@@ -1248,13 +1575,16 @@ async def download(
 
     with db() as con:
         job = con.execute(
-            "SELECT user_id FROM jobs WHERE id=?", (job_id,)
+            "SELECT user_id,status FROM jobs WHERE id=?", (job_id,)
         ).fetchone()
 
     if not job or (
         job["user_id"] != user["id"] and user["role"] != "admin"
     ):
         raise HTTPException(404, "ဖိုင်မတွေ့ပါ။")
+
+    if job["status"] != "done":
+        raise HTTPException(409, "Video processing မပြီးသေးပါ။")
 
     folder = DATA / job_id
     options = {
@@ -1265,7 +1595,8 @@ async def download(
             "original-subtitles.srt"
         ),
         "text": (folder / "recap.txt", "video-recap.txt"),
-        "highlights": (folder / "highlights.mp4", "ai-highlights.mp4")
+        "highlights": (folder / "highlights.mp4", "ai-highlights.mp4"),
+        "voice": (folder / "voice.mp3", "burmese-ai-voice.mp3")
     }
 
     if kind not in options:
@@ -1275,7 +1606,17 @@ async def download(
     if not path.is_file():
         raise HTTPException(404, "ဖိုင်မတွေ့ပါ။")
 
-    return FileResponse(path, filename=filename)
+    media_type = (
+        "audio/mpeg" if kind == "voice"
+        else "video/mp4" if kind in ("video", "highlights")
+        else "text/plain; charset=utf-8"
+    )
+
+    return FileResponse(
+        path,
+        filename=filename,
+        media_type=media_type
+    )
 
 
 # ==================================================
@@ -1320,7 +1661,10 @@ async def admin_credits(
     require_admin(admin)
 
     if amount == 0 or abs(amount) > 10000:
-        raise HTTPException(400, "Credit ပမာဏ 1 မှ 10000 အတွင်း ဖြစ်ရပါမည်။")
+        raise HTTPException(
+            400,
+            "Credit ပမာဏ 1 မှ 10000 အတွင်း ဖြစ်ရပါမည်။"
+        )
 
     with db() as con:
         target = con.execute(
@@ -1340,6 +1684,7 @@ async def admin_credits(
             """,
             (user_id, amount, "Admin credit adjustment", now_iso())
         )
+
     return {"ok": True}
 
 
@@ -1353,7 +1698,10 @@ async def admin_premium(
     require_admin(admin)
 
     if enabled not in (0, 1):
-        raise HTTPException(400, "enabled သည် 0 သို့မဟုတ် 1 ဖြစ်ရပါမည်။")
+        raise HTTPException(
+            400,
+            "enabled သည် 0 သို့မဟုတ် 1 ဖြစ်ရပါမည်။"
+        )
 
     with db() as con:
         target = con.execute(
@@ -1361,6 +1709,7 @@ async def admin_premium(
         ).fetchone()
         if not target:
             raise HTTPException(404, "User မတွေ့ပါ။")
+
         con.execute(
             "UPDATE users SET is_premium=? WHERE id=?",
             (enabled, user_id)
