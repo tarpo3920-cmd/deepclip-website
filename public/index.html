@@ -194,6 +194,29 @@ input[type=file]{display:none}
  padding:5px 9px;border-radius:20px;font-size:11px;font-weight:800;
 }
 footer{text-align:center;color:var(--muted);font-size:10px;padding:15px}
+
+/* Video Preview */
+.video-preview-wrap{
+ display:none;margin-top:14px;padding:10px;
+ background:#11121c;border-radius:15px;overflow:hidden;
+}
+.video-preview-wrap.show{display:block}
+.video-preview{
+ display:block;width:100%;max-height:420px;
+ object-fit:contain;background:#000;border-radius:10px;
+}
+.preview-info{
+ color:#fff;font-size:12px;text-align:center;
+ margin-top:8px;line-height:1.6;overflow-wrap:anywhere;
+}
+.preview-error{
+ color:#ffb4b4;font-size:12px;text-align:center;
+ margin-top:8px;line-height:1.6;
+}
+.preview-remove{
+ width:100%;margin-top:10px;
+}
+
 @media(min-width:600px){main{padding-top:22px}.panel{padding:20px}}
 </style>
 </head>
@@ -281,6 +304,7 @@ footer{text-align:center;color:var(--muted);font-size:10px;padding:15px}
    <button class="btn purple" id="fileTab" type="button">Video ဖိုင်</button>
    <button class="btn light" id="urlTab" type="button">YouTube / TikTok Link</button>
   </div>
+
   <div id="fileSource" class="source-box">
    <label class="upload" for="videoFile">
     <div>
@@ -290,8 +314,21 @@ footer{text-align:center;color:var(--muted);font-size:10px;padding:15px}
      <div class="hint" id="filename">ဖိုင်မရွေးရသေးပါ</div>
     </div>
    </label>
-   <input id="videoFile" type="file" accept="video/mp4,video/quicktime,video/x-matroska,video/webm">
+
+   <input id="videoFile" type="file"
+    accept="video/mp4,video/quicktime,video/x-matroska,video/webm,.mp4,.mov,.mkv,.webm">
+
+   <div class="video-preview-wrap" id="videoPreviewWrap">
+    <video id="videoPreview" class="video-preview"
+     controls playsinline preload="metadata"></video>
+    <div class="preview-info" id="previewInfo"></div>
+    <div class="preview-error" id="previewError"></div>
+    <button type="button" class="btn light preview-remove" id="removeVideo">
+     Video ဖယ်ရှားမယ်
+    </button>
+   </div>
   </div>
+
   <div id="urlSource" class="source-box hidden">
    <h3 style="margin-top:0">Video Link ထည့်ပါ</h3>
    <input class="url-input" id="videoUrl" type="url" placeholder="https://www.youtube.com/watch?v=...">
@@ -327,6 +364,7 @@ footer{text-align:center;color:var(--muted);font-size:10px;padding:15px}
   <button class="btn purple" id="run" style="width:100%;font-size:17px;margin-top:15px">ဖန်တီးမယ်</button>
   <div class="status" id="status"></div>
  </div>
+
  <section class="panel" id="result" style="display:none">
   <h3>AI Recap ရလဒ်</h3>
   <div class="resulttext" id="recapText"></div>
@@ -552,6 +590,7 @@ let mode="recap",ratio="9:16",fit="crop",lang="my";
 let token=localStorage.getItem("dc_token"),register=false,user=null;
 let kpayObjectUrl=null,deferredInstallPrompt=null,sourceType="file";
 let selectedVoice="thiha";
+let videoPreviewUrl=null;
 
 function authHeaders(){
  return token?{"Authorization":"Bearer "+token}:{};
@@ -674,8 +713,83 @@ $("#authForm").onsubmit=async e=>{
  }
 };
 
+/* Video Preview */
+function clearVideoPreview(){
+ const video=$("#videoPreview");
+ if(!video)return;
+
+ video.pause();
+ video.removeAttribute("src");
+ video.load();
+
+ if(videoPreviewUrl){
+  URL.revokeObjectURL(videoPreviewUrl);
+  videoPreviewUrl=null;
+ }
+
+ $("#videoPreviewWrap").classList.remove("show");
+ $("#previewInfo").textContent="";
+ $("#previewError").textContent="";
+ $("#filename").textContent="ဖိုင်မရွေးရသေးပါ";
+}
+
 $("#videoFile").onchange=e=>{
- $("#filename").textContent=e.target.files[0]?.name||"ဖိုင်မရွေးရသေးပါ";
+ const file=e.target.files&&e.target.files[0];
+
+ if(!file){
+  clearVideoPreview();
+  return;
+ }
+
+ const allowedExtensions=[".mp4",".mov",".mkv",".webm"];
+ const fileName=file.name.toLowerCase();
+ const hasAllowedExtension=allowedExtensions.some(ext=>fileName.endsWith(ext));
+
+ if(!file.type.startsWith("video/")&&!hasAllowedExtension){
+  alert("MP4, MOV, MKV သို့မဟုတ် WEBM Video ဖိုင်ကိုသာ ရွေးချယ်ပါ။");
+  e.target.value="";
+  clearVideoPreview();
+  return;
+ }
+
+ if(file.size>500*1024*1024){
+  alert("Video ဖိုင်အရွယ်အစား 500 MB ထက် မကျော်ရပါ။");
+  e.target.value="";
+  clearVideoPreview();
+  return;
+ }
+
+ clearVideoPreview();
+
+ $("#filename").textContent=file.name;
+ $("#previewInfo").textContent=
+  file.name+" · "+(file.size/1024/1024).toFixed(1)+" MB";
+
+ videoPreviewUrl=URL.createObjectURL(file);
+
+ const video=$("#videoPreview");
+ video.src=videoPreviewUrl;
+ $("#videoPreviewWrap").classList.add("show");
+
+ video.onerror=()=>{
+  $("#previewError").textContent=
+   "ဒီ Video Format ကို Browser က Preview မပြနိုင်ပါ။ MP4 (H.264) ဖိုင်နဲ့ စမ်းကြည့်ပါ။";
+ };
+
+ video.onloadedmetadata=()=>{
+  const duration=Number.isFinite(video.duration)
+   ? Math.floor(video.duration)+" စက္ကန့်"
+   : "ကြာချိန် မသိရသေးပါ";
+
+  $("#previewInfo").textContent=
+   file.name+" · "+(file.size/1024/1024).toFixed(1)+
+   " MB · "+duration;
+ };
+};
+
+$("#removeVideo").onclick=()=>{
+ $("#videoFile").value="";
+ clearVideoPreview();
 };
 
 $("#fileTab").onclick=()=>{
@@ -685,6 +799,7 @@ $("#fileTab").onclick=()=>{
  $("#fileTab").className="btn purple";
  $("#urlTab").className="btn light";
 };
+
 $("#urlTab").onclick=()=>{
  sourceType="url";
  $("#urlSource").classList.remove("hidden");
@@ -1057,6 +1172,10 @@ if("serviceWorker" in navigator){
   });
  });
 }
+
+window.addEventListener("beforeunload",()=>{
+ if(videoPreviewUrl)URL.revokeObjectURL(videoPreviewUrl);
+});
 
 loadSettings();
 loadPublicKpayQr();
