@@ -1,9 +1,20 @@
 
-import os, re, uuid, json, hmac, hashlib, secrets, sqlite3, shutil, subprocess, time
+import os
+import re
+import sys
+import uuid
+import json
+import hmac
+import hashlib
+import secrets
+import sqlite3
+import subprocess
+import time
 import base64
 from pathlib import Path
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from urllib.parse import urlparse
 
 import httpx
 from dotenv import load_dotenv
@@ -12,11 +23,13 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
+
 ROOT = Path(__file__).resolve().parent
 PUBLIC = ROOT.parent / "public"
 DATA = ROOT / "data"
 DATA.mkdir(exist_ok=True)
 DB = DATA / "app.db"
+
 SECRET = os.getenv("SECRET_KEY", "unsafe-dev-secret-change-me").encode()
 API_KEY = os.getenv("OPENAI_API_KEY", "")
 TRANSCRIBE_MODEL = os.getenv("OPENAI_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")
@@ -26,18 +39,23 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "change-this-admin-password")
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "500"))
 STARTER_CREDITS = int(os.getenv("STARTER_CREDITS", "5"))
 
-# GitHub permanent storage for KPay QR
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 GITHUB_REPOSITORY = os.getenv(
-    "GITHUB_REPOSITORY",
-    "tarpo3920-cmd/deepclip-website"
+    "GITHUB_REPOSITORY", "tarpo3920-cmd/deepclip-website"
 )
 GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
 KPAY_GITHUB_PATH = "storage/kpay"
 
+ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm"}
+MAX_URL_DOWNLOAD_SECONDS = 900
+
 app = FastAPI(title="DeepClip Mobile MVP")
 app.mount("/public", StaticFiles(directory=str(PUBLIC)), name="public")
 
+
+# --------------------------------------------------
+# Database and authentication
+# --------------------------------------------------
 
 def db():
     con = sqlite3.connect(DB)
@@ -56,38 +74,47 @@ def pw_hash(password, salt=None):
 def pw_check(password, stored):
     try:
         salt, digest = stored.split("$", 1)
-        return hmac.compare_digest(
-            pw_hash(password, salt).split("$", 1)[1],
-            digest
-        )
+        actual = pw_hash(password, salt).split("$", 1)[1]
+        return hmac.compare_digest(actual, digest)
     except Exception:
         return False
 
 
 def token_for(user):
     payload = json.dumps(
-        {"uid": user["id"], "exp": int(time.time()) + 60 * 60 * 24 * 14},
+        {
+            "uid": user["id"],
+            "exp": int(time.time()) + 60 * 60 * 24 * 14
+        },
         separators=(",", ":")
     ).encode()
+
     body = base64.urlsafe_b64encode(payload).decode().rstrip("=")
-    sig = hmac.new(SECRET, body.encode(), hashlib.sha256).hexdigest()
-    return body + "." + sig
+    signature = hmac.new(
+        SECRET, body.encode(), hashlib.sha256
+    ).hexdigest()
+
+    return body + "." + signature
 
 
 def read_token(token):
     try:
-        body, sig = token.split(".", 1)
+        body, signature = token.split(".", 1)
         expected = hmac.new(
             SECRET, body.encode(), hashlib.sha256
         ).hexdigest()
-        if not hmac.compare_digest(sig, expected):
+
+        if not hmac.compare_digest(signature, expected):
             return None
+
         raw = base64.urlsafe_b64decode(
             body + "=" * (-len(body) % 4)
         )
         payload = json.loads(raw)
+
         if payload["exp"] < time.time():
             return None
+
         return int(payload["uid"])
     except Exception:
         return None
@@ -96,54 +123,87 @@ def read_token(token):
 def current_user(authorization: Optional[str]):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "အကောင့်ဝင်ပါ။")
+
     uid = read_token(authorization[7:])
     if not uid:
         raise HTTPException(
             401, "Session သက်တမ်းကုန်သွားပါပြီ။ ပြန်ဝင်ပါ။"
         )
+
     with db() as con:
         user = con.execute(
-            "SELECT id,email,role,credits,is_premium FROM users WHERE id=?",
+            """
+            SELECT id,email,role,credits,is_premium
+            FROM users WHERE id=?
+            """,
             (uid,)
         ).fetchone()
+
     if not user:
         raise HTTPException(401, "အကောင့်မတွေ့ပါ။")
+
     return dict(user)
 
 
 def init_db():
     with db() as con:
-        con.execute("""CREATE TABLE IF NOT EXISTS users(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user',
-            credits INTEGER NOT NULL DEFAULT 0,
-            is_premium INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL
-        )""")
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS users(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'user',
+                credits INTEGER NOT NULL DEFAULT 0,
+                is_premium INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            )
+        """)
+
         cols = [
             r[1] for r in
             con.execute("PRAGMA table_info(users)").fetchall()
         ]
+
         if "is_premium" not in cols:
             con.execute(
-                "ALTER TABLE users ADD COLUMN is_premium INTEGER NOT NULL DEFAULT 0"
+                """
+                ALTER TABLE users
+                ADD COLUMN is_premium INTEGER NOT NULL DEFAULT 0
+                """
             )
-        con.execute("""CREATE TABLE IF NOT EXISTS jobs(
-            id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, filename TEXT,
-            status TEXT NOT NULL, created_at TEXT NOT NULL
-        )""")
-        con.execute("""CREATE TABLE IF NOT EXISTS ledger(
-            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
-            amount INTEGER NOT NULL, reason TEXT NOT NULL, created_at TEXT NOT NULL
-        )""")
+
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS jobs(
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                filename TEXT,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS ledger(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                amount INTEGER NOT NULL,
+                reason TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+
         existing = con.execute(
-            "SELECT id FROM users WHERE email=?", (ADMIN_EMAIL,)
+            "SELECT id FROM users WHERE email=?",
+            (ADMIN_EMAIL,)
         ).fetchone()
+
         if not existing:
             cur = con.execute(
-                "INSERT INTO users(email,password,role,credits,created_at) VALUES(?,?,?,?,?)",
+                """
+                INSERT INTO users(
+                    email,password,role,credits,created_at
+                ) VALUES(?,?,?,?,?)
+                """,
                 (
                     ADMIN_EMAIL,
                     pw_hash(ADMIN_PASSWORD),
@@ -152,8 +212,12 @@ def init_db():
                     datetime.now(timezone.utc).isoformat()
                 )
             )
+
             con.execute(
-                "INSERT INTO ledger(user_id,amount,reason,created_at) VALUES(?,?,?,?)",
+                """
+                INSERT INTO ledger(user_id,amount,reason,created_at)
+                VALUES(?,?,?,?)
+                """,
                 (
                     cur.lastrowid,
                     999999,
@@ -173,7 +237,6 @@ def require_admin(user):
 
 # --------------------------------------------------
 # KPay QR - GitHub Storage
-# Admin only can upload. Everyone can view the QR.
 # --------------------------------------------------
 
 def github_headers():
@@ -182,6 +245,7 @@ def github_headers():
             503,
             "GitHub Token မထည့်ရသေးပါ။ Render Environment ကို စစ်ပါ။"
         )
+
     return {
         "Authorization": f"Bearer {GITHUB_TOKEN}",
         "Accept": "application/vnd.github+json",
@@ -194,6 +258,7 @@ async def github_get_file(path):
         f"https://api.github.com/repos/"
         f"{GITHUB_REPOSITORY}/contents/{path}"
     )
+
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.get(
             url,
@@ -206,8 +271,7 @@ async def github_get_file(path):
 
     if response.status_code != 200:
         raise HTTPException(
-            502,
-            "GitHub မှ Storage ဖိုင်ကို ဖတ်မရပါ။"
+            502, "GitHub မှ Storage ဖိုင်ကို ဖတ်မရပါ။"
         )
 
     return response.json()
@@ -218,6 +282,7 @@ async def github_save_file(path, content, message, sha=None):
         f"https://api.github.com/repos/"
         f"{GITHUB_REPOSITORY}/contents/{path}"
     )
+
     payload = {
         "message": message,
         "content": base64.b64encode(content).decode("ascii"),
@@ -255,20 +320,14 @@ async def read_kpay_metadata():
         raw = base64.b64decode(item["content"])
         return json.loads(raw.decode("utf-8"))
     except Exception:
-        raise HTTPException(
-            502,
-            "KPay QR Metadata ဖတ်မရပါ။"
-        )
+        raise HTTPException(502, "KPay QR Metadata ဖတ်မရပါ။")
 
 
 async def get_kpay_image():
     metadata = await read_kpay_metadata()
 
     if not metadata:
-        raise HTTPException(
-            404,
-            "KPay QR ပုံ မတင်ရသေးပါ။"
-        )
+        raise HTTPException(404, "KPay QR ပုံ မတင်ရသေးပါ။")
 
     filename = metadata.get("filename", "")
     media_type = metadata.get("media_type", "")
@@ -278,15 +337,10 @@ async def get_kpay_image():
         or "/" in filename
         or "\\" in filename
         or media_type not in (
-            "image/png",
-            "image/jpeg",
-            "image/webp"
+            "image/png", "image/jpeg", "image/webp"
         )
     ):
-        raise HTTPException(
-            502,
-            "KPay QR Storage Data မမှန်ပါ။"
-        )
+        raise HTTPException(502, "KPay QR Storage Data မမှန်ပါ။")
 
     image_url = (
         f"https://raw.githubusercontent.com/"
@@ -299,8 +353,7 @@ async def get_kpay_image():
 
     if response.status_code != 200:
         raise HTTPException(
-            502,
-            "GitHub မှ KPay QR ပုံ ရယူမရပါ။"
+            502, "GitHub မှ KPay QR ပုံ ရယူမရပါ။"
         )
 
     return Response(
@@ -321,48 +374,36 @@ async def upload_payment_qr(
     allowed_types = {
         "image/png": (b"\x89PNG\r\n\x1a\n", ".png"),
         "image/jpeg": (b"\xff\xd8\xff", ".jpg"),
-        "image/webp": (b"RIFF", ".webp"),
+        "image/webp": (b"RIFF", ".webp")
     }
 
     content_type = (file.content_type or "").lower()
 
     if content_type not in allowed_types:
         raise HTTPException(
-            415,
-            "PNG, JPG သို့မဟုတ် WEBP ပုံကိုသာ တင်ပါ။"
+            415, "PNG, JPG သို့မဟုတ် WEBP ပုံကိုသာ တင်ပါ။"
         )
 
     try:
         content = await file.read(5 * 1024 * 1024 + 1)
 
         if not content or len(content) > 5 * 1024 * 1024:
-            raise HTTPException(
-                413,
-                "ပုံအရွယ်အစား 5MB ထက် မကျော်ရပါ။"
-            )
+            raise HTTPException(413, "ပုံအရွယ်အစား 5MB ထက် မကျော်ရပါ။")
 
         signature, extension = allowed_types[content_type]
 
         if not content.startswith(signature):
-            raise HTTPException(
-                415,
-                "ပုံဖိုင်အမျိုးအစား မမှန်ပါ။"
-            )
+            raise HTTPException(415, "ပုံဖိုင်အမျိုးအစား မမှန်ပါ။")
 
         if content_type == "image/webp":
             if len(content) < 12 or content[8:12] != b"WEBP":
-                raise HTTPException(
-                    415,
-                    "WEBP ပုံဖိုင် မမှန်ပါ။"
-                )
+                raise HTTPException(415, "WEBP ပုံဖိုင် မမှန်ပါ။")
 
         filename = f"kpay_qr_{uuid.uuid4().hex}{extension}"
         image_path = f"{KPAY_GITHUB_PATH}/{filename}"
 
         await github_save_file(
-            image_path,
-            content,
-            "Upload KPay QR image"
+            image_path, content, "Upload KPay QR image"
         )
 
         metadata_path = f"{KPAY_GITHUB_PATH}/current.json"
@@ -404,11 +445,10 @@ async def get_public_payment_qr():
 
 
 # --------------------------------------------------
-# Existing DeepClip features
+# Daily usage
 # --------------------------------------------------
 
 def myanmar_today():
-    from datetime import timedelta
     return (
         datetime.now(timezone.utc) +
         timedelta(hours=6, minutes=30)
@@ -417,29 +457,47 @@ def myanmar_today():
 
 def check_and_record_daily_use(uid):
     today = myanmar_today()
+
     with db() as con:
         row = con.execute(
-            "SELECT is_premium FROM users WHERE id=?", (uid,)
+            "SELECT is_premium FROM users WHERE id=?",
+            (uid,)
         ).fetchone()
+
         if not row:
             raise HTTPException(401, "အကောင့်မတွေ့ပါ။")
+
         if not row["is_premium"]:
             used = con.execute(
-                "SELECT COUNT(*) AS n FROM jobs WHERE user_id=? AND status IN ('processing','done') AND substr(created_at,1,10)=?",
+                """
+                SELECT COUNT(*) AS n FROM jobs
+                WHERE user_id=?
+                AND status IN ('processing','done')
+                AND substr(created_at,1,10)=?
+                """,
                 (uid, today)
             ).fetchone()["n"]
+
             if used >= 3:
                 raise HTTPException(
                     402,
                     "ဒီနေ့ Free အသုံးပြုခွင့် ၃ ကြိမ် ပြည့်သွားပါပြီ။ ဆက်သုံးရန် Premium ဝယ်ယူပါ။"
                 )
+
         return bool(row["is_premium"])
 
 
+# --------------------------------------------------
+# FFmpeg and video processing
+# --------------------------------------------------
+
 def run_ffmpeg(args, timeout=3600):
     try:
-        p = subprocess.run(
-            ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"] + args,
+        process = subprocess.run(
+            [
+                "ffmpeg", "-y", "-hide_banner",
+                "-loglevel", "error"
+            ] + args,
             capture_output=True,
             text=True,
             timeout=timeout
@@ -448,65 +506,81 @@ def run_ffmpeg(args, timeout=3600):
         raise HTTPException(500, "FFmpeg မတွေ့ပါ။ FFmpeg install လုပ်ပါ။")
     except subprocess.TimeoutExpired:
         raise HTTPException(504, "Video processing အချိန်ကုန်သွားပါတယ်။")
-    if p.returncode:
+
+    if process.returncode:
         raise HTTPException(
-            400,
-            "Video ကို process မလုပ်နိုင်ပါ။ Format ကို စစ်ပါ။"
+            400, "Video ကို process မလုပ်နိုင်ပါ။ Format ကို စစ်ပါ။"
         )
-    return p
+
+    return process
 
 
 def srt_time(seconds):
     ms = int(max(0, float(seconds)) * 1000)
-    h, ms = divmod(ms, 3600000)
-    m, ms = divmod(ms, 60000)
-    s, ms = divmod(ms, 1000)
-    return f"{h:02}:{m:02}:{s:02},{ms:03}"
+    hours, ms = divmod(ms, 3600000)
+    minutes, ms = divmod(ms, 60000)
+    seconds, ms = divmod(ms, 1000)
+    return f"{hours:02}:{minutes:02}:{seconds:02},{ms:03}"
 
 
 def make_srt(segments):
-    out = []
-    for i, seg in enumerate(segments, 1):
-        txt = (seg.get("text") or "").strip()
-        if txt:
-            out.append(
-                f"{i}\n{srt_time(seg.get('start', 0))} --> "
-                f"{srt_time(seg.get('end', 0))}\n{txt}\n"
+    output = []
+
+    for i, segment in enumerate(segments, 1):
+        text = (segment.get("text") or "").strip()
+
+        if text:
+            output.append(
+                f"{i}\n"
+                f"{srt_time(segment.get('start', 0))} --> "
+                f"{srt_time(segment.get('end', 0))}\n"
+                f"{text}\n"
             )
-    return "\n".join(out)
+
+    return "\n".join(output)
 
 
 async def transcribe(path):
     if not API_KEY:
         raise HTTPException(
             503,
-            "AI API key မထည့်ရသေးပါ။ backend/.env ကို ပြင်ပါ။"
+            "AI API key မထည့်ရသေးပါ။ Render Environment ကို စစ်ပါ။"
         )
+
     headers = {"Authorization": f"Bearer {API_KEY}"}
+
     async with httpx.AsyncClient(timeout=900) as client:
-        with path.open("rb") as f:
-            r = await client.post(
+        with path.open("rb") as audio_file:
+            response = await client.post(
                 "https://api.openai.com/v1/audio/transcriptions",
                 headers=headers,
                 data={
                     "model": TRANSCRIBE_MODEL,
                     "response_format": "verbose_json"
                 },
-                files={"file": (path.name, f, "audio/mpeg")}
+                files={
+                    "file": (path.name, audio_file, "audio/mpeg")
+                }
             )
-    if r.status_code >= 400:
+
+    if response.status_code >= 400:
         raise HTTPException(
             502,
             "AI transcription မအောင်မြင်ပါ။ API key, billing နှင့် ဖိုင်အရွယ်အစားကို စစ်ပါ။"
         )
-    return r.json()
+
+    return response.json()
 
 
 async def ai_text(system, prompt):
+    if not API_KEY:
+        raise HTTPException(503, "OpenAI API key မထည့်ရသေးပါ။")
+
     headers = {
         "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json"
     }
+
     payload = {
         "model": TEXT_MODEL,
         "messages": [
@@ -515,18 +589,21 @@ async def ai_text(system, prompt):
         ],
         "temperature": 0.25
     }
+
     async with httpx.AsyncClient(timeout=240) as client:
-        r = await client.post(
+        response = await client.post(
             "https://api.openai.com/v1/chat/completions",
             headers=headers,
             json=payload
         )
-    if r.status_code >= 400:
+
+    if response.status_code >= 400:
         raise HTTPException(
             502,
             "AI recap မအောင်မြင်ပါ။ Text model/API ခွင့်ပြုချက်ကို စစ်ပါ။"
         )
-    return r.json()["choices"][0]["message"]["content"]
+
+    return response.json()["choices"][0]["message"]["content"]
 
 
 def dimensions(ratio):
@@ -539,18 +616,20 @@ def dimensions(ratio):
 
 
 def format_filter(ratio, fit):
-    w, h = dimensions(ratio)
+    width, height = dimensions(ratio)
+
     if fit == "blur":
         return (
             f"[0:v]split=2[bg][fg];"
-            f"[bg]scale={w}:{h}:force_original_aspect_ratio=increase,"
-            f"crop={w}:{h},boxblur=24:12[blur];"
-            f"[fg]scale={w}:{h}:force_original_aspect_ratio=decrease[front];"
+            f"[bg]scale={width}:{height}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height},boxblur=24:12[blur];"
+            f"[fg]scale={width}:{height}:force_original_aspect_ratio=decrease[front];"
             f"[blur][front]overlay=(W-w)/2:(H-h)/2,setsar=1[v]"
         )
+
     return (
-        f"[0:v]scale={w}:{h}:force_original_aspect_ratio=increase,"
-        f"crop={w}:{h},setsar=1[v]"
+        f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
+        f"crop={width}:{height},setsar=1[v]"
     )
 
 
@@ -559,15 +638,22 @@ async def make_highlights(transcript, segments, folder, ratio, fit):
         return None, "အသံမှ timestamp segment မရသောကြောင့် highlight clip မဖန်တီးနိုင်ပါ။"
 
     compact = []
-    for s in segments[:500]:
+
+    for segment in segments[:500]:
         compact.append({
-            "start": s.get("start", 0),
-            "end": s.get("end", 0),
-            "text": (s.get("text") or "")[:240]
+            "start": segment.get("start", 0),
+            "end": segment.get("end", 0),
+            "text": (segment.get("text") or "")[:240]
         })
 
     raw = await ai_text(
-        "You select useful, self-contained highlight moments from a video transcript. Return ONLY valid JSON: {\"clips\":[{\"start\":number,\"end\":number,\"reason\":\"short reason\"}]}. Select 3 to 6 moments. Each should be 8 to 35 seconds, grounded in the supplied segments, non-overlapping where possible. Do not invent timestamps.",
+        (
+            "You select useful, self-contained highlight moments from a video "
+            "transcript. Return ONLY valid JSON: "
+            "{\"clips\":[{\"start\":number,\"end\":number,\"reason\":\"short reason\"}]}. "
+            "Select 3 to 6 moments. Each should be 8 to 35 seconds, grounded "
+            "in the supplied segments. Do not invent timestamps."
+        ),
         "Transcript segments:\n" +
         json.dumps(compact, ensure_ascii=False)[:60000]
     )
@@ -579,31 +665,47 @@ async def make_highlights(transcript, segments, folder, ratio, fit):
         clips = []
 
     valid = []
-    for c in clips:
+
+    for clip in clips:
         try:
-            start = max(0, float(c["start"]))
-            end = float(c["end"])
+            start = max(0, float(clip["start"]))
+            end = float(clip["end"])
+
             if 6 <= end - start <= 45:
                 valid.append((start, end))
         except Exception:
             pass
 
     valid = valid[:6]
+
     if not valid:
         return None, "AI က အသုံးပြုနိုင်သော highlight timestamp မရွေးနိုင်ပါ။"
 
-    source = folder / "source_video"
+    source_files = [
+        p for p in folder.glob("source_video.*")
+        if p.is_file()
+    ]
+
+    if not source_files:
+        return None, "မူရင်း Video ဖိုင် မတွေ့ပါ။"
+
+    source = source_files[0]
     pieces = []
 
     for i, (start, end) in enumerate(valid):
         piece = folder / f"clip_{i}.mp4"
+
         run_ffmpeg(
             [
-                "-ss", str(start), "-to", str(end),
-                "-i", str(source), "-c", "copy", str(piece)
+                "-ss", str(start),
+                "-i", str(source),
+                "-t", str(end - start),
+                "-c", "copy",
+                str(piece)
             ],
             timeout=600
         )
+
         if piece.exists() and piece.stat().st_size > 0:
             pieces.append(piece)
 
@@ -620,32 +722,283 @@ async def make_highlights(transcript, segments, folder, ratio, fit):
     )
 
     joined = folder / "joined.mp4"
+
     run_ffmpeg(
         [
             "-f", "concat", "-safe", "0",
-            "-i", str(listfile), "-c", "copy", str(joined)
+            "-i", str(listfile),
+            "-c", "copy",
+            str(joined)
         ],
         timeout=1200
     )
 
-    out = folder / "highlights.mp4"
-    vf = format_filter(ratio, fit)
+    output = folder / "highlights.mp4"
+
     run_ffmpeg(
         [
             "-i", str(joined),
-            "-filter_complex", vf,
-            "-map", "[v]", "-map", "0:a?",
-            "-c:v", "libx264", "-preset", "veryfast",
-            "-crf", "23", "-c:a", "aac",
-            "-movflags", "+faststart", str(out)
+            "-filter_complex", format_filter(ratio, fit),
+            "-map", "[v]",
+            "-map", "0:a?",
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-crf", "23",
+            "-c:a", "aac",
+            "-movflags", "+faststart",
+            str(output)
         ],
         timeout=1800
     )
-    return out, None
+
+    return output, None
 
 
 # --------------------------------------------------
-# PWA App Icons
+# YouTube / TikTok URL processing
+# --------------------------------------------------
+
+def validate_video_url(url):
+    try:
+        parsed = urlparse(url.strip())
+        host = (parsed.hostname or "").lower()
+    except Exception:
+        raise HTTPException(400, "Video URL မမှန်ပါ။")
+
+    if parsed.scheme != "https":
+        raise HTTPException(400, "HTTPS URL ကိုသာ အသုံးပြုပါ။")
+
+    allowed_hosts = (
+        "youtube.com",
+        "youtu.be",
+        "tiktok.com"
+    )
+
+    allowed = any(
+        host == domain or host.endswith("." + domain)
+        for domain in allowed_hosts
+    )
+
+    if not allowed:
+        raise HTTPException(
+            400,
+            "YouTube သို့မဟုတ် TikTok URL ကိုသာ ထည့်ပါ။"
+        )
+
+    if not parsed.path or parsed.path == "/":
+        raise HTTPException(400, "Video link မမှန်ပါ။")
+
+    return url.strip()
+
+
+def download_public_video(url, folder):
+    """
+    Public/authorized video URL only.
+    Does not use cookies or bypass access restrictions.
+    """
+
+    output_template = str(folder / "source_video.%(ext)s")
+
+    command = [
+        sys.executable,
+        "-m",
+        "yt_dlp",
+        "--no-playlist",
+        "--no-warnings",
+        "--socket-timeout", "30",
+        "--retries", "2",
+        "--max-filesize", f"{MAX_UPLOAD_MB}M",
+        "-f", "best[ext=mp4]/best",
+        "--merge-output-format", "mp4",
+        "-o", output_template,
+        url
+    ]
+
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=MAX_URL_DOWNLOAD_SECONDS
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(
+            504, "URL မှ Video ရယူရန် အချိန်ကုန်သွားပါပြီ။"
+        )
+
+    if result.returncode != 0:
+        raise HTTPException(
+            422,
+            "ဒီ Video link ကို ရယူမရပါ။ Public ဖြစ်ကြောင်း၊ အသုံးပြုခွင့်ရှိကြောင်းနှင့် Platform က ခွင့်ပြုထားကြောင်း စစ်ပါ။"
+        )
+
+    files = [
+        p for p in folder.glob("source_video.*")
+        if p.is_file() and p.suffix.lower() in ALLOWED_VIDEO_EXTENSIONS
+    ]
+
+    if not files:
+        raise HTTPException(
+            422, "URL မှ အသုံးပြုနိုင်သော Video ဖိုင် မရရှိပါ။"
+        )
+
+    source = files[0]
+
+    if source.stat().st_size > MAX_UPLOAD_MB * 1024 * 1024:
+        raise HTTPException(
+            413,
+            f"Video ဖိုင်အရွယ်အစား {MAX_UPLOAD_MB}MB ထက် ကျော်နေပါသည်။"
+        )
+
+    return source
+
+
+# --------------------------------------------------
+# Shared recap processor for uploaded and URL videos
+# --------------------------------------------------
+
+async def process_video(
+    source,
+    original_filename,
+    user,
+    language,
+    mode,
+    ratio,
+    fit_mode,
+    job,
+    folder
+):
+    audio = folder / "audio.mp3"
+    output = folder / "formatted.mp4"
+    srt = folder / "subtitles.srt"
+    recapfile = folder / "recap.txt"
+
+    check_and_record_daily_use(user["id"])
+
+    with db() as con:
+        con.execute(
+            """
+            INSERT INTO jobs(id,user_id,filename,status,created_at)
+            VALUES(?,?,?,?,?)
+            """,
+            (
+                job,
+                user["id"],
+                original_filename,
+                "processing",
+                datetime.now(timezone.utc).isoformat()
+            )
+        )
+
+    try:
+        run_ffmpeg(
+            [
+                "-i", str(source),
+                "-vn",
+                "-ac", "1",
+                "-ar", "16000",
+                "-b:a", "64k",
+                str(audio)
+            ]
+        )
+
+        transcript_data = await transcribe(audio)
+        transcript = (transcript_data.get("text") or "").strip()
+
+        if not transcript:
+            raise HTTPException(422, "အသံမှ စာသားမရပါ။")
+
+        target = {
+            "my": "Burmese",
+            "en": "English",
+            "th": "Thai"
+        }.get(language, "Burmese")
+
+        if mode == "pro":
+            detail = "Provide a detailed structured recap with headings and key points."
+        elif mode == "subtitle":
+            detail = "Provide a brief description of the video topic and key context."
+        else:
+            detail = "Provide a concise recap with key bullet points."
+
+        recap_text = await ai_text(
+            (
+                f"You summarize video transcripts in {target}. "
+                f"Be faithful to the transcript. Do not invent facts. {detail}"
+            ),
+            "Summarize this transcript:\n\n" + transcript[:90000]
+        )
+
+        recapfile.write_text(recap_text, encoding="utf-8")
+
+        srt.write_text(
+            make_srt(transcript_data.get("segments", [])),
+            encoding="utf-8"
+        )
+
+        run_ffmpeg(
+            [
+                "-i", str(source),
+                "-filter_complex", format_filter(ratio, fit_mode),
+                "-map", "[v]",
+                "-map", "0:a?",
+                "-c:v", "libx264",
+                "-preset", "veryfast",
+                "-crf", "23",
+                "-c:a", "aac",
+                "-b:a", "128k",
+                "-movflags", "+faststart",
+                str(output)
+            ],
+            timeout=2400
+        )
+
+        result = {
+            "job_id": job,
+            "recap": recap_text,
+            "transcript": transcript[:10000],
+            "downloads": {
+                "video": f"/api/download/{job}/video",
+                "srt": f"/api/download/{job}/srt",
+                "text": f"/api/download/{job}/text"
+            }
+        }
+
+        if mode == "pro":
+            highlight, error = await make_highlights(
+                transcript,
+                transcript_data.get("segments", []),
+                folder,
+                ratio,
+                fit_mode
+            )
+
+            if highlight:
+                result["downloads"]["highlights"] = (
+                    f"/api/download/{job}/highlights"
+                )
+            else:
+                result["highlight_note"] = error
+
+        with db() as con:
+            con.execute(
+                "UPDATE jobs SET status='done' WHERE id=?",
+                (job,)
+            )
+
+        return result
+
+    except Exception:
+        with db() as con:
+            con.execute(
+                "UPDATE jobs SET status='failed' WHERE id=?",
+                (job,)
+            )
+        raise
+
+
+# --------------------------------------------------
+# PWA icons, manifest and website
 # --------------------------------------------------
 
 @app.get("/icon-192.png")
@@ -655,10 +1008,7 @@ async def icon_192():
     if not path.is_file():
         raise HTTPException(404, "192 icon မတွေ့ပါ။")
 
-    return FileResponse(
-        path,
-        media_type="image/png"
-    )
+    return FileResponse(path, media_type="image/png")
 
 
 @app.get("/icon-512.png")
@@ -668,15 +1018,8 @@ async def icon_512():
     if not path.is_file():
         raise HTTPException(404, "512 icon မတွေ့ပါ။")
 
-    return FileResponse(
-        path,
-        media_type="image/png"
-    )
+    return FileResponse(path, media_type="image/png")
 
-
-# --------------------------------------------------
-# PWA Manifest and Service Worker
-# --------------------------------------------------
 
 @app.get("/manifest.json")
 async def pwa_manifest():
@@ -686,8 +1029,7 @@ async def pwa_manifest():
         raise HTTPException(404, "manifest.json မတွေ့ပါ။")
 
     return FileResponse(
-        path,
-        media_type="application/manifest+json"
+        path, media_type="application/manifest+json"
     )
 
 
@@ -712,53 +1054,84 @@ async def home():
 
 @app.get("/sitemap.xml")
 async def sitemap():
-    return FileResponse(
-        PUBLIC / "sitemap.xml",
-        media_type="application/xml"
-    )
+    path = PUBLIC / "sitemap.xml"
+
+    if not path.is_file():
+        raise HTTPException(404, "sitemap.xml မတွေ့ပါ။")
+
+    return FileResponse(path, media_type="application/xml")
 
 
 @app.get("/api/health")
 async def health():
-    return {"ok": True, "ai_configured": bool(API_KEY)}
+    return {
+        "ok": True,
+        "ai_configured": bool(API_KEY)
+    }
 
+
+# --------------------------------------------------
+# Register, login and account
+# --------------------------------------------------
 
 @app.post("/api/register")
-async def register(email: str = Form(...), password: str = Form(...)):
+async def register(
+    email: str = Form(...),
+    password: str = Form(...)
+):
     email = email.strip().lower()
+
     if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         raise HTTPException(400, "Email မှန်ကန်စွာ ထည့်ပါ။")
+
     if len(password) < 8:
         raise HTTPException(400, "Password အနည်းဆုံး ၈ လုံးထားပါ။")
+
     if email == ADMIN_EMAIL:
         raise HTTPException(409, "ဤ email ကို အသုံးပြု၍မရပါ။")
 
     with db() as con:
         try:
             cur = con.execute(
-                "INSERT INTO users(email,password,role,credits,created_at) VALUES(?,?,?,?,?)",
+                """
+                INSERT INTO users(
+                    email,password,role,credits,created_at
+                ) VALUES(?,?,?,?,?)
+                """,
                 (
                     email,
                     pw_hash(password),
                     "user",
-                    0,
+                    STARTER_CREDITS,
                     datetime.now(timezone.utc).isoformat()
                 )
             )
         except sqlite3.IntegrityError:
-            raise HTTPException(409, "ဤ email ဖြင့် အကောင့်ရှိပြီးသားပါ။")
+            raise HTTPException(
+                409, "ဤ email ဖြင့် အကောင့်ရှိပြီးသားပါ။"
+            )
 
         uid = cur.lastrowid
+
         user = con.execute(
-            "SELECT id,email,role,credits,is_premium FROM users WHERE id=?",
+            """
+            SELECT id,email,role,credits,is_premium
+            FROM users WHERE id=?
+            """,
             (uid,)
         ).fetchone()
 
-    return {"token": token_for(user), "user": dict(user)}
+    return {
+        "token": token_for(user),
+        "user": dict(user)
+    }
 
 
 @app.post("/api/login")
-async def login(email: str = Form(...), password: str = Form(...)):
+async def login(
+    email: str = Form(...),
+    password: str = Form(...)
+):
     with db() as con:
         user = con.execute(
             "SELECT * FROM users WHERE email=?",
@@ -767,8 +1140,7 @@ async def login(email: str = Form(...), password: str = Form(...)):
 
     if not user or not pw_check(password, user["password"]):
         raise HTTPException(
-            401,
-            "Email သို့မဟုတ် Password မှားနေပါသည်။"
+            401, "Email သို့မဟုတ် Password မှားနေပါသည်။"
         )
 
     return {
@@ -788,6 +1160,10 @@ async def me(authorization: Optional[str] = Header(None)):
     return {"user": current_user(authorization)}
 
 
+# --------------------------------------------------
+# Video upload endpoint
+# --------------------------------------------------
+
 @app.post("/api/recap")
 async def recap(
     file: UploadFile = File(...),
@@ -798,149 +1174,132 @@ async def recap(
     authorization: Optional[str] = Header(None)
 ):
     user = current_user(authorization)
-    allowed = {".mp4", ".mov", ".mkv", ".webm"}
+
     suffix = Path(file.filename or "").suffix.lower()
 
-    if suffix not in allowed:
+    if suffix not in ALLOWED_VIDEO_EXTENSIONS:
         raise HTTPException(
-            415,
-            "MP4, MOV, MKV, WEBM ဖိုင်ကိုသာ တင်ပါ။"
+            415, "MP4, MOV, MKV, WEBM ဖိုင်ကိုသာ တင်ပါ။"
         )
+
+    if mode not in ("recap", "pro", "subtitle"):
+        raise HTTPException(400, "Mode မမှန်ပါ။")
+
+    if ratio not in ("9:16", "3:4", "16:9", "1:1"):
+        raise HTTPException(400, "Video ratio မမှန်ပါ။")
+
+    if fit_mode not in ("crop", "blur"):
+        raise HTTPException(400, "Fit mode မမှန်ပါ။")
 
     job = uuid.uuid4().hex
     folder = DATA / job
-    folder.mkdir()
+    folder.mkdir(parents=True, exist_ok=True)
+
     source = folder / ("source_video" + suffix)
-    audio = folder / "audio.mp3"
-    output = folder / "formatted.mp4"
-    srt = folder / "subtitles.srt"
-    recapfile = folder / "recap.txt"
     size = 0
 
     try:
-        with source.open("wb") as out:
+        with source.open("wb") as output_file:
             while True:
                 chunk = await file.read(1024 * 1024)
+
                 if not chunk:
                     break
+
                 size += len(chunk)
+
                 if size > MAX_UPLOAD_MB * 1024 * 1024:
                     raise HTTPException(
                         413,
                         f"ဖိုင်အရွယ်အစား {MAX_UPLOAD_MB}MB ထက် မကျော်ရပါ။"
                     )
-                out.write(chunk)
 
-        check_and_record_daily_use(user["id"])
+                output_file.write(chunk)
 
-        with db() as con:
-            con.execute(
-                "INSERT INTO jobs(id,user_id,filename,status,created_at) VALUES(?,?,?,?,?)",
-                (
-                    job,
-                    user["id"],
-                    file.filename,
-                    "processing",
-                    datetime.now(timezone.utc).isoformat()
-                )
-            )
+        if size == 0:
+            raise HTTPException(400, "Video ဖိုင်အလွတ် ဖြစ်နေပါသည်။")
 
-        run_ffmpeg([
-            "-i", str(source), "-vn", "-ac", "1",
-            "-ar", "16000", "-b:a", "64k", str(audio)
-        ])
-
-        transcript_data = await transcribe(audio)
-        transcript = (transcript_data.get("text") or "").strip()
-
-        if not transcript:
-            raise HTTPException(422, "အသံမှ စာသားမရပါ။")
-
-        target = {
-            "my": "Burmese",
-            "en": "English",
-            "th": "Thai"
-        }.get(language, "Burmese")
-
-        detail = (
-            "Provide a detailed structured recap with headings and key points."
-            if mode == "pro"
-            else "Provide a concise recap with key bullet points."
+        return await process_video(
+            source=source,
+            original_filename=file.filename or "uploaded-video",
+            user=user,
+            language=language,
+            mode=mode,
+            ratio=ratio,
+            fit_mode=fit_mode,
+            job=job,
+            folder=folder
         )
-
-        if mode == "subtitle":
-            detail = "Provide a brief description of the video topic and key context."
-
-        recap_text = await ai_text(
-            f"You summarize video transcripts in {target}. Be faithful to the transcript. Do not invent facts. {detail}",
-            "Summarize this transcript:\n\n" + transcript[:90000]
-        )
-
-        recapfile.write_text(recap_text, encoding="utf-8")
-        srt.write_text(
-            make_srt(transcript_data.get("segments", [])),
-            encoding="utf-8"
-        )
-
-        vf = format_filter(ratio, fit_mode)
-        run_ffmpeg(
-            [
-                "-i", str(source),
-                "-filter_complex", vf,
-                "-map", "[v]", "-map", "0:a?",
-                "-c:v", "libx264", "-preset", "veryfast",
-                "-crf", "23", "-c:a", "aac",
-                "-b:a", "128k", "-movflags", "+faststart",
-                str(output)
-            ],
-            timeout=2400
-        )
-
-        result = {
-            "job_id": job,
-            "recap": recap_text,
-            "transcript": transcript[:10000],
-            "downloads": {
-                "video": f"/api/download/{job}/video",
-                "srt": f"/api/download/{job}/srt",
-                "text": f"/api/download/{job}/text"
-            }
-        }
-
-        if mode == "pro":
-            highlight, err = await make_highlights(
-                transcript,
-                transcript_data.get("segments", []),
-                folder,
-                ratio,
-                fit_mode
-            )
-            if highlight:
-                result["downloads"]["highlights"] = (
-                    f"/api/download/{job}/highlights"
-                )
-            else:
-                result["highlight_note"] = err
-
-        with db() as con:
-            con.execute(
-                "UPDATE jobs SET status='done' WHERE id=?",
-                (job,)
-            )
-
-        return result
-
-    except Exception:
-        with db() as con:
-            con.execute(
-                "UPDATE jobs SET status='failed' WHERE id=?",
-                (job,)
-            )
-        raise
 
     finally:
         await file.close()
 
+
+# --------------------------------------------------
+# YouTube / TikTok URL endpoint
+# Frontend sends FormData field: url
+# --------------------------------------------------
+
+@app.post("/api/recap-url")
+async def recap_url(
+    url: str = Form(...),
+    language: str = Form("my"),
+    mode: str = Form("recap"),
+    ratio: str = Form("9:16"),
+    fit_mode: str = Form("crop"),
+    authorization: Optional[str] = Header(None)
+):
+    user = current_user(authorization)
+
+    if mode not in ("recap", "pro", "subtitle"):
+        raise HTTPException(400, "Mode မမှန်ပါ။")
+
+    if ratio not in ("9:16", "3:4", "16:9", "1:1"):
+        raise HTTPException(400, "Video ratio မမှန်ပါ။")
+
+    if fit_mode not in ("crop", "blur"):
+        raise HTTPException(400, "Fit mode မမှန်ပါ။")
+
+    safe_url = validate_video_url(url)
+
+    job = uuid.uuid4().hex
+    folder = DATA / job
+    folder.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # Download public video using yt-dlp.
+        source = download_public_video(safe_url, folder)
+
+        return await process_video(
+            source=source,
+            original_filename="video-from-url" + source.suffix,
+            user=user,
+            language=language,
+            mode=mode,
+            ratio=ratio,
+            fit_mode=fit_mode,
+            job=job,
+            folder=folder
+        )
+
+    except Exception:
+        # Remove failed URL download files to save storage.
+        # Keep job folder if processing already created a job record.
+        with db() as con:
+            existing = con.execute(
+                "SELECT id FROM jobs WHERE id=?",
+                (job,)
+            ).fetchone()
+
+        if not existing:
+            shutil.rmtree(folder, ignore_errors=True)
+
+        raise
+
+
+# --------------------------------------------------
+# Download generated files
+# --------------------------------------------------
 
 @app.get("/api/download/{job_id}/{kind}")
 async def download(
@@ -960,28 +1319,46 @@ async def download(
         ).fetchone()
 
     if not job or (
-        job["user_id"] != user["id"] and user["role"] != "admin"
+        job["user_id"] != user["id"]
+        and user["role"] != "admin"
     ):
         raise HTTPException(404, "ဖိုင်မတွေ့ပါ။")
 
     folder = DATA / job_id
+
     options = {
-        "video": (folder / "formatted.mp4", "formatted-video.mp4"),
-        "srt": (folder / "subtitles.srt", "subtitles.srt"),
-        "text": (folder / "recap.txt", "video-recap.txt"),
-        "highlights": (folder / "highlights.mp4", "ai-highlights.mp4")
+        "video": (
+            folder / "formatted.mp4",
+            "formatted-video.mp4"
+        ),
+        "srt": (
+            folder / "subtitles.srt",
+            "subtitles.srt"
+        ),
+        "text": (
+            folder / "recap.txt",
+            "video-recap.txt"
+        ),
+        "highlights": (
+            folder / "highlights.mp4",
+            "ai-highlights.mp4"
+        )
     }
 
     if kind not in options:
         raise HTTPException(404, "Not found")
 
-    path, name = options[kind]
+    path, filename = options[kind]
 
     if not path.exists():
         raise HTTPException(404, "ဖိုင်မတွေ့ပါ။")
 
-    return FileResponse(path, filename=name)
+    return FileResponse(path, filename=filename)
 
+
+# --------------------------------------------------
+# Admin dashboard
+# --------------------------------------------------
 
 @app.get("/api/admin/overview")
 async def admin_overview(
@@ -992,15 +1369,22 @@ async def admin_overview(
 
     with db() as con:
         users = con.execute(
-            "SELECT id,email,role,credits,is_premium,created_at FROM users ORDER BY id DESC"
+            """
+            SELECT id,email,role,credits,is_premium,created_at
+            FROM users ORDER BY id DESC
+            """
         ).fetchall()
+
         jobs = con.execute(
-            "SELECT id,user_id,filename,status,created_at FROM jobs ORDER BY created_at DESC LIMIT 50"
+            """
+            SELECT id,user_id,filename,status,created_at
+            FROM jobs ORDER BY created_at DESC LIMIT 50
+            """
         ).fetchall()
 
     return {
-        "users": [dict(x) for x in users],
-        "jobs": [dict(x) for x in jobs]
+        "users": [dict(item) for item in users],
+        "jobs": [dict(item) for item in jobs]
     }
 
 
@@ -1015,8 +1399,7 @@ async def admin_credits(
 
     if amount == 0 or abs(amount) > 10000:
         raise HTTPException(
-            400,
-            "Credit ပမာဏ 1 မှ 10000 အတွင်း ဖြစ်ရပါမည်။"
+            400, "Credit ပမာဏ 1 မှ 10000 အတွင်း ဖြစ်ရပါမည်။"
         )
 
     with db() as con:
@@ -1032,8 +1415,12 @@ async def admin_credits(
             "UPDATE users SET credits=MAX(0,credits+?) WHERE id=?",
             (amount, user_id)
         )
+
         con.execute(
-            "INSERT INTO ledger(user_id,amount,reason,created_at) VALUES(?,?,?,?)",
+            """
+            INSERT INTO ledger(user_id,amount,reason,created_at)
+            VALUES(?,?,?,?)
+            """,
             (
                 user_id,
                 amount,
@@ -1056,8 +1443,7 @@ async def admin_premium(
 
     if enabled not in (0, 1):
         raise HTTPException(
-            400,
-            "enabled သည် 0 သို့မဟုတ် 1 ဖြစ်ရပါမည်။"
+            400, "enabled သည် 0 သို့မဟုတ် 1 ဖြစ်ရပါမည်။"
         )
 
     with db() as con:
@@ -1074,4 +1460,7 @@ async def admin_premium(
             (enabled, user_id)
         )
 
-    return {"ok": True, "is_premium": bool(enabled)}
+    return {
+        "ok": True,
+        "is_premium": bool(enabled)
+    }
