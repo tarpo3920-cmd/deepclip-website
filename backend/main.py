@@ -674,6 +674,37 @@ async def icon_512():
     )
 
 
+# --------------------------------------------------
+# PWA Manifest and Service Worker
+# --------------------------------------------------
+
+@app.get("/manifest.json")
+async def pwa_manifest():
+    path = PUBLIC / "manifest.json"
+
+    if not path.is_file():
+        raise HTTPException(404, "manifest.json မတွေ့ပါ။")
+
+    return FileResponse(
+        path,
+        media_type="application/manifest+json"
+    )
+
+
+@app.get("/sw.js")
+async def pwa_service_worker():
+    path = PUBLIC / "sw.js"
+
+    if not path.is_file():
+        raise HTTPException(404, "sw.js မတွေ့ပါ။")
+
+    return FileResponse(
+        path,
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"}
+    )
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return (PUBLIC / "index.html").read_text(encoding="utf-8")
