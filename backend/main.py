@@ -235,6 +235,9 @@ async def make_highlights(transcript, segments, folder, ratio, fit):
 
 @app.get("/",response_class=HTMLResponse)
 async def home():
+@app.get("/sitemap.xml")
+async def sitemap():
+    return FileResponse(PUBLIC / "sitemap.xml", media_type="application/xml")
     return (PUBLIC/"index.html").read_text(encoding="utf-8")
 
 @app.get("/api/health")
