@@ -233,12 +233,15 @@ async def make_highlights(transcript, segments, folder, ratio, fit):
     run_ffmpeg(["-i",str(joined),"-filter_complex",vf,"-map","[v]","-map","0:a?","-c:v","libx264","-preset","veryfast","-crf","23","-c:a","aac","-movflags","+faststart",str(out)],timeout=1800)
     return out, None
 
-@app.get("/",response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse)
 async def home():
+    return (PUBLIC / "index.html").read_text(encoding="utf-8")
+
+
 @app.get("/sitemap.xml")
 async def sitemap():
     return FileResponse(PUBLIC / "sitemap.xml", media_type="application/xml")
-    return (PUBLIC/"index.html").read_text(encoding="utf-8")
+
 
 @app.get("/api/health")
 async def health():
