@@ -112,6 +112,93 @@ def require_admin(user):
     if user["role"] != "admin":
         raise HTTPException(403, "Admin သာ အသုံးပြုနိုင်ပါသည်။")
 
+# KPay QR image storage
+KPAY_STORAGE = Path(os.getenv("KPAY_STORAGE_DIR", str(DATA / "kpay")))
+KPAY_STORAGE.mkdir(parents=True, exist_ok=True)
+
+
+@app.post("/api/admin/payment-qr")
+async def upload_payment_qr(
+    file: UploadFile = File(...),
+    authorization: Optional[str] = Header(None)
+):
+    admin = current_user(authorization)
+    require_admin(admin)
+
+    allowed_types = {
+        "image/png": (b"\x89PNG\r\n\x1a\n", ".png"),
+        "image/jpeg": (b"\xff\xd8\xff", ".jpg"),
+        "image/webp": (b"RIFF", ".webp"),
+    }
+
+    content_type = (file.content_type or "").lower()
+
+    if content_type not in allowed_types:
+        raise HTTPException(
+            415,
+            "PNG, JPG သို့မဟုတ် WEBP ပုံကိုသာ တင်ပါ။"
+        )
+
+    try:
+        content = await file.read(5 * 1024 * 1024 + 1)
+
+        if not content or len(content) > 5 * 1024 * 1024:
+            raise HTTPException(
+                413,
+                "ပုံအရွယ်အစား 5MB ထက် မကျော်ရပါ။"
+            )
+
+        signature, extension = allowed_types[content_type]
+
+        if not content.startswith(signature):
+            raise HTTPException(415, "ပုံဖိုင်အမျိုးအစား မမှန်ပါ။")
+
+        if content_type == "image/webp":
+            if len(content) < 12 or content[8:12] != b"WEBP":
+                raise HTTPException(415, "WEBP ပုံဖိုင် မမှန်ပါ။")
+
+        final_file = KPAY_STORAGE / ("kpay_qr" + extension)
+        temp_file = KPAY_STORAGE / ("kpay_qr" + extension + ".tmp")
+
+        temp_file.write_bytes(content)
+        temp_file.replace(final_file)
+
+        # ဖိုင်အသစ် သိမ်းပြီးမှ အဟောင်းများ ဖယ်ရှားမည်
+        for old_file in KPAY_STORAGE.glob("kpay_qr.*"):
+            if old_file != final_file and old_file.is_file():
+                old_file.unlink()
+
+        return {
+            "ok": True,
+            "message": "KPay QR ပုံ Upload အောင်မြင်ပါသည်။"
+        }
+
+    finally:
+        await file.close()
+
+
+@app.get("/api/admin/payment-qr")
+async def get_payment_qr(
+    authorization: Optional[str] = Header(None)
+):
+    admin = current_user(authorization)
+    require_admin(admin)
+
+    files = [
+        ("kpay_qr.png", "image/png"),
+        ("kpay_qr.jpg", "image/jpeg"),
+        ("kpay_qr.webp", "image/webp"),
+    ]
+
+    for filename, media_type in files:
+        path = KPAY_STORAGE / filename
+
+        if path.exists():
+            return FileResponse(path, media_type=media_type)
+
+    raise HTTPException(404, "KPay QR ပုံ မတင်ရသေးပါ။")
+
+
 
 def myanmar_today():
     # Myanmar time is UTC+06:30. Use a fixed offset so server timezone does not matter.
