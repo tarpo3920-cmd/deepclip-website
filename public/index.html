@@ -1,9 +1,19 @@
 
 <!doctype html>
-<html lang="my"><head>
+<html lang="my">
+<head>
 <meta name="google-site-verification" content="zbjmSbU82vyUuFTMzmKOTlJtd56nAWZajtj4HCi2CIw" />
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<meta name="theme-color" content="#fff"><title>DeepClip — AI Video Recap</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#5145df">
+<meta name="description" content="DeepClip AI Video Recap - Video များကို AI ဖြင့် အကျဉ်းချုပ်ဖန်တီးပါ။">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="DeepClip">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<title>DeepClip — AI Video Recap</title>
 <style>
 :root{--p:#5145df;--ink:#191a25;--muted:#777b8d;--line:#e4e5ed;--soft:#f4f4fa}
 *{box-sizing:border-box}body{margin:0;background:#f2f3f8;color:var(--ink);font-family:system-ui,-apple-system,"Noto Sans Myanmar",sans-serif}
@@ -37,12 +47,26 @@ h3{font-size:16px;margin:15px 0 8px}.modes{display:grid;grid-template-columns:re
 .public-kpay-status{font-size:13px;color:var(--muted);text-align:center;line-height:1.7;padding:12px}
 footer{text-align:center;color:#999bad;font-size:10px;padding:12px}
 @media(min-width:600px){main{padding-top:22px}.panel{padding:20px}}
-</style></head><body>
-<header><div class="brand"><div class="logo">▶</div>DeepClip</div><div class="right"><span>Auto Recap</span><div class="credit" id="credit">3</div><button class="btn light" id="accountBtn">Login</button></div></header>
-<main><div class="note" id="tierNote" style="text-align:center">Free အသုံးပြုသူများ တစ်ရက် ၃ ကြိမ် · Premium ဖြင့် ပိုမိုအသုံးပြုနိုင်သည်</div>
-<div class="panel" style="text-align:center;margin-top:10px"><b>PREMIUM MEMBERSHIP</b><div style="font-size:28px;font-weight:850;color:#5145df;margin:6px 0">20,000 Ks <span style="font-size:13px;color:#777b8d">/ လ</span></div><div class="hint">Free: တစ်ရက် ၃ ကြိမ် · Premium: နေ့စဉ် ၃ ကြိမ် ကန့်သတ်ချက်မရှိ</div></div>
+</style>
+</head>
+<body>
+<header>
+<div class="brand"><div class="logo">▶</div>DeepClip</div>
+<div class="right">
+<span>Auto Recap</span>
+<div class="credit" id="credit">3</div>
+<button class="btn light hidden" id="installBtn">Install App</button>
+<button class="btn light" id="accountBtn">Login</button>
+</div>
+</header>
+<main>
+<div class="note" id="tierNote" style="text-align:center">Free အသုံးပြုသူများ တစ်ရက် ၃ ကြိမ် · Premium ဖြင့် ပိုမိုအသုံးပြုနိုင်သည်</div>
+<div class="panel" style="text-align:center;margin-top:10px">
+<b>PREMIUM MEMBERSHIP</b>
+<div style="font-size:28px;font-weight:850;color:#5145df;margin:6px 0">20,000 Ks <span style="font-size:13px;color:#777b8d">/ လ</span></div>
+<div class="hint">Free: တစ်ရက် ၃ ကြိမ် · Premium: နေ့စဉ် ၃ ကြိမ် ကန့်သတ်ချက်မရှိ</div>
+</div>
 
-<!-- Customer များအတွက် Public KPay QR -->
 <section class="panel" id="publicKpayPanel">
 <h3 style="text-align:center">KPay ဖြင့် ငွေပေးချေရန်</h3>
 <div class="public-kpay-status" id="publicKpayStatus">KPay QR ပုံကို ဖတ်နေပါတယ်…</div>
@@ -51,32 +75,61 @@ footer{text-align:center;color:#999bad;font-size:10px;padding:12px}
 </section>
 
 <section class="panel authbox" id="authbox">
-<h3 id="authTitle">အကောင့်ဝင်ရန်</h3><form id="authForm">
+<h3 id="authTitle">အကောင့်ဝင်ရန်</h3>
+<form id="authForm">
 <input class="field" id="email" type="email" placeholder="Email" required autocomplete="email">
 <input class="field" id="password" type="password" placeholder="Password (အနည်းဆုံး ၈ လုံး)" required minlength="8" autocomplete="current-password" style="margin-top:8px">
 <button class="btn purple" style="width:100%;margin-top:10px" id="authSubmit">Login</button>
-</form><div class="authswitch" id="authSwitch">အကောင့်မရှိသေးပါ။ Register လုပ်ရန်</div><div class="note" id="authMsg"></div>
+</form>
+<div class="authswitch" id="authSwitch">အကောင့်မရှိသေးပါ။ Register လုပ်ရန်</div>
+<div class="note" id="authMsg"></div>
 </section>
+
 <section class="panel" id="appPanel">
-<label class="upload" for="videoFile"><div><div class="upicon">⇧</div><strong>Video ဖိုင် ရွေးပါ</strong><div class="hint">MP4, MOV, MKV, WEBM · 500 MB အထိ</div><div class="hint" id="filename">ဖိုင်မရွေးရသေးပါ</div></div></label>
+<label class="upload" for="videoFile">
+<div>
+<div class="upicon">⇧</div>
+<strong>Video ဖိုင် ရွေးပါ</strong>
+<div class="hint">MP4, MOV, MKV, WEBM · 500 MB အထိ</div>
+<div class="hint" id="filename">ဖိုင်မရွေးရသေးပါ</div>
+</div>
+</label>
 <input id="videoFile" type="file" accept="video/mp4,video/quicktime,video/x-matroska,video/webm">
 <div class="or">AI Video Processing</div>
 <div class="note">ကိုယ်ပိုင်ခွင့်ပြုချက်ရှိသော Video ဖိုင်ကိုသာ Upload လုပ်ပါ။ YouTube/TikTok link downloading ကို မထည့်ထားပါ။</div>
 </section>
+
 <section class="panel" id="settingsPanel">
-<div class="tabs"><button class="tab active">ဗီဒီယို</button><button class="tab">အသံ</button><button class="tab">စာတန်း</button><button class="tab">အပို</button></div>
-<h3>ပုံစံ</h3><div class="modes">
+<div class="tabs">
+<button class="tab active">ဗီဒီယို</button><button class="tab">အသံ</button><button class="tab">စာတန်း</button><button class="tab">အပို</button>
+</div>
+<h3>ပုံစံ</h3>
+<div class="modes">
 <button class="mode active" data-mode="recap">AI Recap<small>အဓိကအချက်များ အကျဉ်းချုပ်</small></button>
 <button class="mode" data-mode="pro">Pro AI Recap<small>အသေးစိတ် + AI Highlight</small></button>
 <button class="mode" data-mode="subtitle">Subtitle Mode<small>စာတန်းဖိုင် ထုတ်ယူရန်</small></button>
 </div>
-<h3>အချိုး</h3><div class="choices" id="ratios"><button class="choice active" data-ratio="9:16">9:16</button><button class="choice" data-ratio="3:4">3:4</button><button class="choice" data-ratio="16:9">16:9</button><button class="choice" data-ratio="1:1">1:1</button></div>
-<h3>Video Fit</h3><div class="choices" id="fit"><button class="choice active" data-fit="crop">ဖြတ်ညှိ</button><button class="choice" data-fit="blur">Blur နောက်ခံ</button></div>
-<h3>Output ဘာသာ</h3><div class="choices" id="languages"><button class="choice active" data-lang="my">မြန်မာ</button><button class="choice" data-lang="en">English</button><button class="choice" data-lang="th">ไทย</button></div>
+<h3>အချိုး</h3>
+<div class="choices" id="ratios">
+<button class="choice active" data-ratio="9:16">9:16</button><button class="choice" data-ratio="3:4">3:4</button><button class="choice" data-ratio="16:9">16:9</button><button class="choice" data-ratio="1:1">1:1</button>
+</div>
+<h3>Video Fit</h3>
+<div class="choices" id="fit">
+<button class="choice active" data-fit="crop">ဖြတ်ညှိ</button><button class="choice" data-fit="blur">Blur နောက်ခံ</button>
+</div>
+<h3>Output ဘာသာ</h3>
+<div class="choices" id="languages">
+<button class="choice active" data-lang="my">မြန်မာ</button><button class="choice" data-lang="en">English</button><button class="choice" data-lang="th">ไทย</button>
+</div>
 <button class="btn purple" id="run" style="width:100%;font-size:17px;margin-top:14px">ဖန်တီးမယ်</button>
 <div class="status" id="status"></div>
 </section>
-<section class="panel result" id="result"><h3>AI Recap ရလဒ်</h3><div class="resulttext" id="recapText"></div><div class="links" id="downloads"></div></section>
+
+<section class="panel result" id="result">
+<h3>AI Recap ရလဒ်</h3>
+<div class="resulttext" id="recapText"></div>
+<div class="links" id="downloads"></div>
+</section>
 
 <section class="panel hidden" id="adminPanel">
 <h3>Admin Dashboard</h3>
@@ -91,12 +144,10 @@ footer{text-align:center;color:#999bad;font-size:10px;padding:12px}
 <form id="premiumForm" class="row">
 <input class="field" id="premiumUserId" type="number" placeholder="User ID" required>
 <select class="field" id="premiumEnabled">
-<option value="1">Premium ဖွင့်မယ်</option>
-<option value="0">Premium ပိတ်မယ်</option>
+<option value="1">Premium ဖွင့်မယ်</option><option value="0">Premium ပိတ်မယ်</option>
 </select>
 <button class="btn purple">သိမ်းမယ်</button>
 </form>
-
 <h3>KPay QR ငွေလက်ခံပုံ</h3>
 <div class="kpay-box">
 <div class="kpay-status" id="kpayQrStatus">KPay QR ပုံ မတင်ရသေးပါ</div>
@@ -106,28 +157,37 @@ footer{text-align:center;color:#999bad;font-size:10px;padding:12px}
 <div class="note">PNG / JPG / WEBP · 5MB အထိ</div>
 <button type="button" class="btn purple" id="kpayQrUpload">QR ပုံ Upload တင်မယ်</button>
 </div>
-
 <div class="note" id="adminMsg"></div>
 </section>
 <footer>DeepClip Mobile MVP · AI processing uses your configured API account</footer>
 </main>
+
 <script>
-const $=s=>document.querySelector(s);let mode="recap",ratio="9:16",fit="crop",lang="my",token=localStorage.getItem("dc_token"),register=false,user=null;
+const $=s=>document.querySelector(s);
+let mode="recap",ratio="9:16",fit="crop",lang="my",token=localStorage.getItem("dc_token"),register=false,user=null;
 let kpayObjectUrl=null;
+let deferredInstallPrompt=null;
 
 function authHeaders(){return token?{"Authorization":"Bearer "+token}:{}}
 function setUser(u){user=u;$("#credit").textContent=u.is_premium?"PRO":"3/day";$("#accountBtn").textContent=u.email?"Logout":"Login";$("#accountBtn").title=u.email||"";$("#authbox").classList.remove("show");$("#appPanel").classList.toggle("hidden",!u.email);$("#settingsPanel").classList.toggle("hidden",!u.email);if(u.role==="admin")loadAdmin();else $("#adminPanel").classList.add("hidden")}
 async function api(url,opts={}){opts.headers={...(opts.headers||{}),...authHeaders()};let r=await fetch(url,opts),d=await r.json().catch(()=>({detail:"Server error"}));if(!r.ok)throw Error(d.detail||"Request failed");return d}
 async function refresh(){if(!token){setUser({email:"",credits:0});return}try{let d=await api("/api/me");setUser(d.user)}catch(e){token=null;localStorage.removeItem("dc_token");setUser({email:"",credits:0})}}
-$("#accountBtn").onclick=()=>{if(token){localStorage.removeItem("dc_token");token=null;refresh()}else{$("#authbox").classList.add("show");$("#appPanel").classList.add("hidden");$("#settingsPanel").classList.add("hidden")}};
-$("#authSwitch").onclick=()=>{register=!register;$("#authTitle").textContent=register?"အကောင့်အသစ်ဖွင့်ရန်":"အကောင့်ဝင်ရန်";$("#authSubmit").textContent=register?"Register":"Login";$("#authSwitch").textContent=register?"အကောင့်ရှိပြီးသားပါ။ Login ဝင်ရန်":"အကောင့်မရှိသေးပါ။ Register လုပ်ရန်";$("#password").autocomplete=register?"new-password":"current-password"};
-$("#authForm").onsubmit=async e=>{e.preventDefault();$("#authMsg").textContent="လုပ်ဆောင်နေပါတယ်…";let fd=new FormData();fd.append("email",$("#email").value);fd.append("password",$("#password").value);try{let d=await api(register?"/api/register":"/api/login",{method:"POST",body:fd});token=d.token;localStorage.setItem("dc_token",token);setUser(d.user);$("#authMsg").textContent=""}catch(err){$("#authMsg").textContent=err.message}};
-$("#videoFile").onchange=e=>$("#filename").textContent=e.target.files[0]?.name||"ဖိုင်မရွေးရသေးပါ";
-document.querySelectorAll(".mode").forEach(b=>b.onclick=()=>{document.querySelectorAll(".mode").forEach(x=>x.classList.remove("active"));b.classList.add("active");mode=b.dataset.mode});
-function group(id,key,cb){document.querySelectorAll(id+" .choice").forEach(b=>b.onclick=()=>{document.querySelectorAll(id+" .choice").forEach(x=>x.classList.remove("active"));b.classList.add("active");cb(b.dataset[key])})}
-group("#ratios","ratio",v=>ratio=v);group("#fit","fit",v=>fit=v);group("#languages","lang",v=>lang=v);
 
-/* Customer များအတွက် Public KPay QR ကို ဖတ်ခြင်း */
+$("#accountBtn").onclick=()=>{if(token){localStorage.removeItem("dc_token");token=null;refresh()}else{$("#authbox").classList.add("show");$("#appPanel").classList.add("hidden");$("#settingsPanel").classList.add("hidden")}};
+
+$("#authSwitch").onclick=()=>{register=!register;$("#authTitle").textContent=register?"အကောင့်အသစ်ဖွင့်ရန်":"အကောင့်ဝင်ရန်";$("#authSubmit").textContent=register?"Register":"Login";$("#authSwitch").textContent=register?"အကောင့်ရှိပြီးသားပါ။ Login ဝင်ရန်":"အကောင့်မရှိသေးပါ။ Register လုပ်ရန်";$("#password").autocomplete=register?"new-password":"current-password"};
+
+$("#authForm").onsubmit=async e=>{e.preventDefault();$("#authMsg").textContent="လုပ်ဆောင်နေပါတယ်…";let fd=new FormData();fd.append("email",$("#email").value);fd.append("password",$("#password").value);try{let d=await api(register?"/api/register":"/api/login",{method:"POST",body:fd});token=d.token;localStorage.setItem("dc_token",token);setUser(d.user);$("#authMsg").textContent=""}catch(err){$("#authMsg").textContent=err.message}};
+
+$("#videoFile").onchange=e=>$("#filename").textContent=e.target.files[0]?.name||"ဖိုင်မရွေးရသေးပါ";
+
+document.querySelectorAll(".mode").forEach(b=>b.onclick=()=>{document.querySelectorAll(".mode").forEach(x=>x.classList.remove("active"));b.classList.add("active");mode=b.dataset.mode});
+
+function group(id,key,cb){document.querySelectorAll(id+" .choice").forEach(b=>b.onclick=()=>{document.querySelectorAll(id+" .choice").forEach(x=>x.classList.remove("active"));b.classList.add("active");cb(b.dataset[key])})}
+group("#ratios","ratio",v=>ratio=v);
+group("#fit","fit",v=>fit=v);
+group("#languages","lang",v=>lang=v);
+
 async function loadPublicKpayQr(){
 const status=$("#publicKpayStatus");
 const image=$("#publicKpayQr");
@@ -169,7 +229,6 @@ $("#result").style.display="block";$("#status").textContent=d.highlight_note||"�
 finally{$("#run").disabled=false}
 };
 
-/* Admin Dashboard */
 async function loadAdmin(){
 try{
 let d=await api("/api/admin/overview");
@@ -179,7 +238,6 @@ await loadKpayQr();
 }catch(e){$("#adminMsg").textContent=e.message}
 }
 
-/* Admin သာ KPay QR ကို ဖတ်နိုင်ရန် */
 async function loadKpayQr(){
 const status=$("#kpayQrStatus");
 const preview=$("#kpayQrPreview");
@@ -203,7 +261,6 @@ status.textContent="QR ပုံကို ဖတ်မရပါ။";
 }
 }
 
-/* KPay QR Upload */
 $("#kpayQrUpload").onclick=async()=>{
 const file=$("#kpayQrFile").files[0];
 const status=$("#kpayQrStatus");
@@ -231,8 +288,39 @@ button.disabled=false;
 };
 
 $("#creditForm").onsubmit=async e=>{e.preventDefault();let fd=new FormData();fd.append("user_id",$("#targetId").value);fd.append("amount",$("#creditAmount").value);try{await api("/api/admin/credits",{method:"POST",body:fd});$("#adminMsg").textContent="Credit ပြင်ဆင်ပြီးပါပြီ။";loadAdmin()}catch(err){$("#adminMsg").textContent=err.message}};
+
 $("#premiumForm").onsubmit=async e=>{e.preventDefault();let fd=new FormData();fd.append("user_id",$("#premiumUserId").value);fd.append("enabled",$("#premiumEnabled").value);try{await api("/api/admin/premium",{method:"POST",body:fd});$("#adminMsg").textContent="Premium status ပြင်ဆင်ပြီးပါပြီ။";loadAdmin()}catch(err){$("#adminMsg").textContent=err.message}};
+
+/* PWA Install Button */
+window.addEventListener("beforeinstallprompt",event=>{
+event.preventDefault();
+deferredInstallPrompt=event;
+$("#installBtn").classList.remove("hidden");
+});
+
+$("#installBtn").onclick=async()=>{
+if(!deferredInstallPrompt)return;
+deferredInstallPrompt.prompt();
+const result=await deferredInstallPrompt.userChoice;
+deferredInstallPrompt=null;
+$("#installBtn").classList.add("hidden");
+};
+
+window.addEventListener("appinstalled",()=>{
+$("#installBtn").classList.add("hidden");
+});
+
+/* Service Worker */
+if("serviceWorker" in navigator){
+window.addEventListener("load",()=>{
+navigator.serviceWorker.register("/sw.js").catch(error=>{
+console.error("Service Worker registration failed:",error);
+});
+});
+}
 
 loadPublicKpayQr();
 refresh();
-</script></body></html>
+</script>
+</body>
+</html>
