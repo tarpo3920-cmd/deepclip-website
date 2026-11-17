@@ -644,6 +644,36 @@ async def make_highlights(transcript, segments, folder, ratio, fit):
     return out, None
 
 
+# --------------------------------------------------
+# PWA App Icons
+# --------------------------------------------------
+
+@app.get("/icon-192.png")
+async def icon_192():
+    path = PUBLIC / "icon-192.png"
+
+    if not path.is_file():
+        raise HTTPException(404, "192 icon မတွေ့ပါ။")
+
+    return FileResponse(
+        path,
+        media_type="image/png"
+    )
+
+
+@app.get("/icon-512.png")
+async def icon_512():
+    path = PUBLIC / "icon-512.png"
+
+    if not path.is_file():
+        raise HTTPException(404, "512 icon မတွေ့ပါ။")
+
+    return FileResponse(
+        path,
+        media_type="image/png"
+    )
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return (PUBLIC / "index.html").read_text(encoding="utf-8")
