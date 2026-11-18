@@ -1,8 +1,6 @@
-
-
 fastapi
-uvicorn
+uvicorn[standard]
 python-multipart
 httpx
 yt-dlp
-openai
+python-dotenv
