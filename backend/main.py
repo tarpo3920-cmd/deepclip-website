@@ -14,7 +14,6 @@ import json
 import wave
 from pathlib import Path
 from urllib.parse import urlparse
-from datetime import datetime, timezone
 
 import httpx
 import yt_dlp
@@ -27,22 +26,22 @@ DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "deepclip.sqlite3"
 
-# Gemini Developer API configuration. Never put the API key in source control.
+# Gemini Interactions API configuration.
+# Keep GEMINI_API_KEY in Render Environment Variables, never in this file.
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
+TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3.8-flash").strip()
+AUDIO_MODEL = os.getenv("GEMINI_AUDIO_MODEL", "gemini-3.8-flash").strip()
+TTS_MODEL = os.getenv("GEMINI_TTS_MODEL", "gemini-3.8-flash-tts").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
-TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-2.5-flash")
-AUDIO_MODEL = os.getenv("GEMINI_AUDIO_MODEL", "gemini-2.5-flash")
-TTS_MODEL = os.getenv("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts")
 TTS_DEFAULT_VOICE = os.getenv("TTS_VOICE", "alloy")
 
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "").strip().lower()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 MAX_VIDEO_MB = int(os.getenv("MAX_UPLOAD_MB", "500"))
-MAX_AUDIO_MB = 18  # Gemini inline audio request limit; keep a safety margin.
-STARTER_CREDITS = 3  # Lifetime free uses per account (not a daily allowance).
+MAX_AUDIO_MB = 18
+STARTER_CREDITS = 3
 PREMIUM_PRICE_KS = int(os.getenv("PREMIUM_PRICE_KS", "20000"))
 
-# Preserve the existing front-end voice identifiers and map them to Gemini voices.
 TTS_VOICE_MAP = {
     "alloy": "Kore",
     "echo": "Puck",
@@ -159,43 +158,69 @@ def require_api_key():
 def clean_error(error):
     msg = str(error)
     low = msg.lower()
-    if "api_key" in low or "api key not valid" in low or "invalid_argument" in low and "key" in low:
+    if "api_key" in low or "api key not valid" in low or ("invalid_argument" in low and "key" in low):
         return "Gemini API Key မမှန်ပါ။ Render Environment မှာ GEMINI_API_KEY ကို စစ်ဆေးပါ။"
-    if "quota" in low or "resource_exhausted" in low:
+    if "quota" in low or "resource_exhausted" in low or "rate_limit" in low:
         return "Gemini API quota သို့မဟုတ် limit ပြည့်နေပါတယ်။ Google AI Studio မှာ သင့် quota ကို စစ်ဆေးပါ။"
     return msg[:700]
 
 
-async def gemini_generate(model, payload, timeout=240):
+async def gemini_interaction(model, input_data, timeout=300, extra=None):
+    """Call the current Gemini Interactions REST API."""
     require_api_key()
-    url = f"{GEMINI_BASE}/{model}:generateContent"
+    payload = {"model": model, "input": input_data, "store": False}
+    if extra:
+        payload.update(extra)
     async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(
-            url,
-            headers={"Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY},
+            GEMINI_API_URL,
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": GEMINI_API_KEY,
+                "Api-Revision": "2026-05-20",
+            },
             json=payload,
         )
     if response.status_code != 200:
-        raise RuntimeError(f"Gemini request failed ({response.status_code}): {response.text[:350]}")
-    return response.json()
+        try:
+            detail = response.json()
+        except Exception:
+            detail = response.text[:500]
+        raise RuntimeError(f"Gemini request failed ({response.status_code}): {str(detail)[:500]}")
+    data = response.json()
+    if data.get("status") == "failed":
+        raise RuntimeError(f"Gemini interaction failed: {str(data.get('error', data))[:500]}")
+    return data
 
 
-def gemini_response_text(data):
-    try:
-        parts = data["candidates"][0]["content"]["parts"]
-        return "\n".join(part.get("text", "") for part in parts if part.get("text")).strip()
-    except (KeyError, IndexError, TypeError):
+def interaction_text(data):
+    # Prefer the convenience output_text field if returned.
+    value = data.get("output_text")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    pieces = []
+    for step in data.get("steps", []):
+        if step.get("type") == "model_output":
+            for part in step.get("content", []):
+                if part.get("type") == "text" and part.get("text"):
+                    pieces.append(part["text"])
+    result = "\n".join(pieces).strip()
+    if not result:
         raise RuntimeError("Gemini မှ စာသားအဖြေ မရရှိပါ။")
+    return result
 
 
 async def ai_text(system, prompt):
-    payload = {
-        "systemInstruction": {"parts": [{"text": system}]},
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.3},
-    }
-    data = await gemini_generate(TEXT_MODEL, payload, timeout=300)
-    return gemini_response_text(data)
+    # The Interactions API accepts a plain input string. Put the task instructions
+    # at the start so the model receives the same instruction context.
+    full_prompt = (
+        "Follow these instructions carefully:\n"
+        + system.strip()
+        + "\n\nUser content:\n"
+        + prompt
+    )
+    data = await gemini_interaction(TEXT_MODEL, full_prompt, timeout=300)
+    return interaction_text(data)
 
 
 def audio_mime(path):
@@ -217,23 +242,45 @@ async def transcribe(path):
     encoded = base64.b64encode(path.read_bytes()).decode("ascii")
     prompt = (
         "Transcribe the supplied audio accurately in its original language. "
-        "Return ONLY valid JSON with this exact shape: "
+        "Return only valid JSON with this exact shape: "
         '{"text":"full transcript","language":"language name","segments":[{"start":0.0,"end":2.5,"text":"spoken words"}]}. '
         "Use seconds for timestamps. Include useful sequential speech segments. "
         "Do not translate the transcript. If timestamps cannot be determined, return an empty segments array."
     )
-    payload = {
-        "contents": [{
-            "role": "user",
-            "parts": [
-                {"text": prompt},
-                {"inline_data": {"mime_type": audio_mime(path), "data": encoded}},
-            ],
-        }],
-        "generationConfig": {"temperature": 0, "responseMimeType": "application/json"},
+    # Interactions multimodal input uses typed content blocks.
+    input_data = [
+        {"type": "text", "text": prompt},
+        {"type": "audio", "data": encoded, "mime_type": audio_mime(path)},
+    ]
+    response_format = {
+        "type": "text",
+        "mime_type": "application/json",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string"},
+                "language": {"type": "string"},
+                "segments": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "start": {"type": "number"},
+                            "end": {"type": "number"},
+                            "text": {"type": "string"},
+                        },
+                        "required": ["start", "end", "text"],
+                    },
+                },
+            },
+            "required": ["text", "segments"],
+        },
     }
-    data = await gemini_generate(AUDIO_MODEL, payload, timeout=900)
-    raw = gemini_response_text(data)
+    data = await gemini_interaction(
+        AUDIO_MODEL, input_data, timeout=900,
+        extra={"response_format": response_format},
+    )
+    raw = interaction_text(data)
     try:
         parsed = json.loads(raw)
         text = str(parsed.get("text", "")).strip()
@@ -252,13 +299,8 @@ async def transcribe(path):
             segment_text = str(item.get("text", "")).strip()
             if segment_text:
                 clean_segments.append({"start": start, "end": end, "text": segment_text})
-        return {
-            "text": text,
-            "segments": clean_segments,
-            "language": parsed.get("language"),
-        }
+        return {"text": text, "segments": clean_segments, "language": parsed.get("language")}
     except (json.JSONDecodeError, AttributeError, TypeError):
-        # Keep the transcript usable if the model does not return the requested JSON.
         return {"text": raw, "segments": [], "language": None}
 
 
@@ -276,37 +318,70 @@ async def generate_speech(text, output, voice=None):
     voice = voice or TTS_DEFAULT_VOICE
     if voice not in ALLOWED_TTS_VOICES:
         raise HTTPException(400, "Unsupported TTS voice")
+
     payload = {
-        "contents": [{"role": "user", "parts": [{"text": text[:8000]}]}],
-        "generationConfig": {
-            "responseModalities": ["AUDIO"],
-            "speechConfig": {
-                "voiceConfig": {
-                    "prebuiltVoiceConfig": {"voiceName": TTS_VOICE_MAP[voice]}
-                }
-            },
+        "model": TTS_MODEL,
+        "input": [{
+            "type": "user_input",
+            "content": [{
+                "type": "text",
+                "text": text[:8000],
+                "annotations": [{
+                    "type": "speech_metadata",
+                    "style": "Clear, natural and friendly narration",
+                }],
+            }],
+        }],
+        "response_format": {
+            "type": "audio",
+            "mime_type": "audio/wav",
+            "sample_rate": 24000,
         },
+        "generation_config": {
+            "speech_config": [{"voice": TTS_VOICE_MAP[voice]}],
+        },
+        "store": False,
     }
-    data = await gemini_generate(TTS_MODEL, payload, timeout=600)
-    try:
-        parts = data["candidates"][0]["content"]["parts"]
-        audio_part = next(part for part in parts if part.get("inlineData", {}).get("data"))
-        audio_bytes = base64.b64decode(audio_part["inlineData"]["data"])
-        mime = audio_part["inlineData"].get("mimeType", "").lower()
-    except (KeyError, IndexError, StopIteration, TypeError, ValueError):
+    async with httpx.AsyncClient(timeout=600) as client:
+        response = await client.post(
+            GEMINI_API_URL,
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": GEMINI_API_KEY,
+                "Api-Revision": "2026-05-20",
+            },
+            json=payload,
+        )
+    if response.status_code != 200:
+        try:
+            detail = response.json()
+        except Exception:
+            detail = response.text[:500]
+        raise RuntimeError(f"Gemini TTS failed ({response.status_code}): {str(detail)[:500]}")
+
+    data = response.json()
+    audio_b64 = (data.get("output_audio") or {}).get("data")
+    if not audio_b64:
+        for step in data.get("steps", []):
+            if step.get("type") == "model_output":
+                for part in step.get("content", []):
+                    if part.get("type") == "audio" and part.get("data"):
+                        audio_b64 = part["data"]
+                        break
+    if not audio_b64:
         raise RuntimeError("Gemini TTS မှ အသံဖိုင် မရရှိပါ။")
 
-    # Gemini TTS commonly returns raw 24 kHz, 16-bit PCM. Wrap it as WAV.
+    audio_bytes = base64.b64decode(audio_b64)
+    # The requested audio/wav format should normally include a WAV header.
+    # If raw 24 kHz PCM is returned, wrap it as a mono 16-bit WAV.
     if audio_bytes[:4] == b"RIFF":
         output.write_bytes(audio_bytes)
-    elif "pcm" in mime or "l16" in mime or not mime:
+    else:
         with wave.open(str(output), "wb") as wav:
             wav.setnchannels(1)
             wav.setsampwidth(2)
             wav.setframerate(24000)
             wav.writeframes(audio_bytes)
-    else:
-        output.write_bytes(audio_bytes)
     return output
 
 
@@ -422,8 +497,6 @@ def export_video(video, folder, ratio="9:16", fit_mode="crop", burn_subtitles=Fa
 
 
 def consume_credit(user_id):
-    # Each non-premium account receives exactly three lifetime uses.
-    # The conditional update prevents simultaneous requests overspending credits.
     with db() as conn:
         row = conn.execute("SELECT credits, is_premium FROM users WHERE id=?", (user_id,)).fetchone()
         if not row:
@@ -481,7 +554,7 @@ async def run_recap(video, folder, user, language, mode, ratio, fit_mode):
             + "\n\nTRANSCRIPT / TRANSLATION\n\n" + translated,
             encoding="utf-8",
         )
-        exported = await asyncio.to_thread(export_video, video, folder, ratio, fit_mode, mode == "subtitle")
+        await asyncio.to_thread(export_video, video, folder, ratio, fit_mode, mode == "subtitle")
         job_id = folder.name
         with db() as conn:
             conn.execute(
