@@ -21,13 +21,28 @@ from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from starlette.background import BackgroundTask
 
+# IMPORTANT:
+# On Render, attach a Persistent Disk mounted at /var/data and set
+# DEEPCLIP_DATA_DIR=/var/data. This keeps users/sessions across restarts.
 BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
+DATA_DIR = Path(
+    os.getenv("DEEPCLIP_DATA_DIR")
+    or os.getenv("DATA_DIR")
+    or str(BASE_DIR / "data")
+).expanduser().resolve()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH = DATA_DIR / "deepclip.sqlite3"
 
-# Gemini Interactions API configuration.
-# Keep GEMINI_API_KEY in Render Environment Variables, never in this file.
+DB_PATH = Path(
+    os.getenv("DATABASE_PATH") or str(DATA_DIR / "deepclip.sqlite3")
+).expanduser().resolve()
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+# If a persistent disk is configured for the first time, preserve the old
+# database by copying it once when the new database does not exist.
+LEGACY_DB_PATH = (BASE_DIR / "data" / "deepclip.sqlite3").resolve()
+if DB_PATH != LEGACY_DB_PATH and not DB_PATH.exists() and LEGACY_DB_PATH.is_file():
+    shutil.copy2(LEGACY_DB_PATH, DB_PATH)
+
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
 TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3.8-flash").strip()
 AUDIO_MODEL = os.getenv("GEMINI_AUDIO_MODEL", "gemini-3.8-flash").strip()
@@ -62,9 +77,10 @@ JOBS = {}
 
 
 def db():
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = sqlite3.connect(str(DB_PATH), timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA busy_timeout=30000")
     return conn
 
 
@@ -87,6 +103,8 @@ def init_db():
             id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, folder TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'completed', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_user_id ON jobs(user_id)")
 
 
 init_db()
@@ -129,19 +147,29 @@ def user_payload(row):
 def create_session(user_id):
     token = secrets.token_urlsafe(40)
     with db() as conn:
-        conn.execute("INSERT INTO sessions(token_hash,user_id) VALUES(?,?)", (token_digest(token), user_id))
+        conn.execute(
+            "INSERT INTO sessions(token_hash,user_id) VALUES(?,?)",
+            (token_digest(token), user_id),
+        )
     return token
 
 
 def current_user(authorization):
-    if not authorization or not authorization.lower().startswith("bearer "):
+    if not authorization:
         raise HTTPException(401, "Login required")
-    token = authorization.split(" ", 1)[1].strip()
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(401, "Login required")
+    token = token.strip()
     with db() as conn:
-        row = conn.execute("""SELECT u.* FROM users u JOIN sessions s ON s.user_id=u.id
-                              WHERE s.token_hash=?""", (token_digest(token),)).fetchone()
+        row = conn.execute(
+            """SELECT u.* FROM users u
+               JOIN sessions s ON s.user_id=u.id
+               WHERE s.token_hash=?""",
+            (token_digest(token),),
+        ).fetchone()
     if not row:
-        raise HTTPException(401, "Invalid session")
+        raise HTTPException(401, "Invalid session. Please log in again.")
     return dict(row)
 
 
@@ -166,7 +194,6 @@ def clean_error(error):
 
 
 async def gemini_interaction(model, input_data, timeout=300, extra=None):
-    """Call the current Gemini Interactions REST API."""
     require_api_key()
     payload = {"model": model, "input": input_data, "store": False}
     if extra:
@@ -194,7 +221,6 @@ async def gemini_interaction(model, input_data, timeout=300, extra=None):
 
 
 def interaction_text(data):
-    # Prefer the convenience output_text field if returned.
     value = data.get("output_text")
     if isinstance(value, str) and value.strip():
         return value.strip()
@@ -211,8 +237,6 @@ def interaction_text(data):
 
 
 async def ai_text(system, prompt):
-    # The Interactions API accepts a plain input string. Put the task instructions
-    # at the start so the model receives the same instruction context.
     full_prompt = (
         "Follow these instructions carefully:\n"
         + system.strip()
@@ -247,7 +271,6 @@ async def transcribe(path):
         "Use seconds for timestamps. Include useful sequential speech segments. "
         "Do not translate the transcript. If timestamps cannot be determined, return an empty segments array."
     )
-    # Interactions multimodal input uses typed content blocks.
     input_data = [
         {"type": "text", "text": prompt},
         {"type": "audio", "data": encoded, "mime_type": audio_mime(path)},
@@ -318,7 +341,6 @@ async def generate_speech(text, output, voice=None):
     voice = voice or TTS_DEFAULT_VOICE
     if voice not in ALLOWED_TTS_VOICES:
         raise HTTPException(400, "Unsupported TTS voice")
-
     payload = {
         "model": TTS_MODEL,
         "input": [{
@@ -358,7 +380,6 @@ async def generate_speech(text, output, voice=None):
         except Exception:
             detail = response.text[:500]
         raise RuntimeError(f"Gemini TTS failed ({response.status_code}): {str(detail)[:500]}")
-
     data = response.json()
     audio_b64 = (data.get("output_audio") or {}).get("data")
     if not audio_b64:
@@ -370,10 +391,7 @@ async def generate_speech(text, output, voice=None):
                         break
     if not audio_b64:
         raise RuntimeError("Gemini TTS မှ အသံဖိုင် မရရှိပါ။")
-
     audio_bytes = base64.b64decode(audio_b64)
-    # The requested audio/wav format should normally include a WAV header.
-    # If raw 24 kHz PCM is returned, wrap it as a mono 16-bit WAV.
     if audio_bytes[:4] == b"RIFF":
         output.write_bytes(audio_bytes)
     else:
@@ -447,7 +465,6 @@ def make_srt(segments, output):
     def stamp(value):
         ms = max(0, int(float(value or 0) * 1000))
         return f"{ms//3600000:02}:{(ms%3600000)//60000:02}:{(ms%60000)//1000:02},{ms%1000:03}"
-
     with output.open("w", encoding="utf-8") as f:
         for i, seg in enumerate(segments, 1):
             f.write(
@@ -609,7 +626,7 @@ async def home():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "ffmpeg": ffmpeg_available()}
+    return {"status": "ok", "ffmpeg": ffmpeg_available(), "database": str(DB_PATH)}
 
 
 @app.post("/api/register")
@@ -628,7 +645,8 @@ async def register(email: str = Form(...), password: str = Form(...)):
             (email, hash_password(password), role, STARTER_CREDITS),
         )
         uid = cur.lastrowid
-    return {"success": True, "token": create_session(uid), "user": user_after_update(uid)}
+    token = create_session(uid)
+    return {"success": True, "token": token, "user": user_after_update(uid)}
 
 
 @app.post("/api/login")
@@ -647,7 +665,7 @@ async def login(email: str = Form(...), password: str = Form(...)):
 @app.post("/api/logout")
 async def logout(authorization: str | None = Header(default=None)):
     current_user(authorization)
-    token = authorization.split(" ", 1)[1].strip()
+    token = authorization.partition(" ")[2].strip()
     with db() as conn:
         conn.execute("DELETE FROM sessions WHERE token_hash=?", (token_digest(token),))
     return {"success": True}
