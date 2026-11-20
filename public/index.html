@@ -4,1390 +4,179 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#090d18">
+<meta name="description" content="DeepClip AI Video Intelligence Studio">
 <title>DeepClip AI — Video Intelligence Studio</title>
-
 <style>
-:root {
-  --bg:#090d18;
-  --panel:#111827;
-  --panel2:#172033;
-  --text:#f4f6ff;
-  --muted:#9ba8c0;
-  --primary:#795cff;
-  --secondary:#20c9a6;
-  --border:#27334a;
-  --danger:#ff647c;
-  --sidebar:250px;
-}
-
-*{box-sizing:border-box}
-
-body {
-  margin:0;
-  background:var(--bg);
-  color:var(--text);
-  font-family:Inter,system-ui,"Noto Sans Myanmar",sans-serif;
-}
-
-button,input,textarea,select{font:inherit}
-button{cursor:pointer}
-.hidden{display:none!important}
-
-.app-layout{
-  min-height:100vh;
-  display:flex;
-}
-
-.sidebar{
-  width:var(--sidebar);
-  position:fixed;
-  inset:0 auto 0 0;
-  background:#0d1422;
-  border-right:1px solid var(--border);
-  padding:22px 15px;
-  display:flex;
-  flex-direction:column;
-  z-index:30;
-  overflow-y:auto;
-}
-
-.logo{
-  font-size:23px;
-  font-weight:900;
-  letter-spacing:-1px;
-  padding:5px 12px 28px;
-}
-
-.logo span{color:var(--primary)}
-
-.nav-label{
-  color:#687792;
-  font-size:11px;
-  font-weight:800;
-  letter-spacing:1.5px;
-  padding:15px 12px 8px;
-}
-
-.nav-item{
-  width:100%;
-  display:flex;
-  align-items:center;
-  gap:12px;
-  padding:12px 13px;
-  margin:3px 0;
-  border:1px solid transparent;
-  border-radius:11px;
-  background:transparent;
-  color:var(--muted);
-  text-align:left;
-  transition:.2s;
-}
-
-.nav-item:hover,
-.nav-item.active{
-  background:#1c2540;
-  border-color:#343b64;
-  color:white;
-}
-
-.nav-item.active{
-  box-shadow:inset 3px 0 var(--primary);
-}
-
-.sidebar-bottom{
-  margin-top:auto;
-  padding-top:20px;
-}
-
-.sidebar-user{
-  border:1px solid var(--border);
-  border-radius:13px;
-  padding:12px;
-  overflow-wrap:anywhere;
-}
-
-.sidebar-user strong{
-  display:block;
-  font-size:13px;
-  margin-bottom:5px;
-}
-
-.sidebar-user small{color:var(--muted)}
-
-.main-area{
-  margin-left:var(--sidebar);
-  width:calc(100% - var(--sidebar));
-  min-width:0;
-}
-
-.topbar{
-  height:70px;
-  padding:0 30px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  border-bottom:1px solid var(--border);
-  background:#090d18ee;
-  backdrop-filter:blur(15px);
-  position:sticky;
-  top:0;
-  z-index:20;
-}
-
-.topbar-title{font-weight:800}
-.topbar-right{
-  display:flex;
-  gap:12px;
-  align-items:center;
-}
-
-.container{
-  max-width:1250px;
-  margin:auto;
-  padding:28px;
-}
-
-.page{display:none}
-.page.active{display:block}
-
-.hero{
-  padding:30px 0;
-}
-
-.hero h1{
-  font-size:clamp(30px,5vw,48px);
-  margin:10px 0;
-  letter-spacing:-1.5px;
-}
-
-.gradient{
-  background:linear-gradient(90deg,#9a83ff,#27d6b4);
-  color:transparent;
-  background-clip:text;
-}
-
-.hero p{
-  color:var(--muted);
-  line-height:1.8;
-  max-width:720px;
-}
-
-.card{
-  background:var(--panel);
-  border:1px solid var(--border);
-  border-radius:17px;
-  padding:22px;
-  margin-bottom:20px;
-}
-
-.card h2{
-  font-size:20px;
-  margin:0 0 15px;
-}
-
-.card h3{
-  font-size:16px;
-  margin:18px 0 10px;
-}
-
-p{
-  color:var(--muted);
-  line-height:1.7;
-}
-
-.btn{
-  border:0;
-  border-radius:10px;
-  padding:12px 18px;
-  background:var(--primary);
-  color:white;
-  font-weight:750;
-}
-
-.btn:hover{filter:brightness(1.12)}
-.btn:disabled{opacity:.5;cursor:not-allowed}
-.btn.secondary{
-  background:var(--panel2);
-  border:1px solid var(--border);
-}
-.btn.green{background:#087e69}
-.btn.red{background:#9d334a}
-.btn.small{padding:8px 12px;font-size:13px}
-
-input,textarea,select{
-  width:100%;
-  padding:13px 14px;
-  border-radius:10px;
-  border:1px solid var(--border);
-  background:#0c1423;
-  color:var(--text);
-  outline:none;
-  margin:7px 0 13px;
-}
-
-input:focus,textarea:focus,select:focus{
-  border-color:var(--primary);
-}
-
-textarea{min-height:130px;resize:vertical}
-label{font-size:14px;color:#c6d0e3}
-
-.tabs{
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-  margin-bottom:18px;
-}
-
-.tab{
-  background:var(--panel2);
-  border:1px solid var(--border);
-  padding:10px 15px;
-  border-radius:10px;
-  color:var(--muted);
-}
-
-.tab.active{
-  background:var(--primary);
-  color:white;
-  border-color:var(--primary);
-}
-
-.grid{
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:15px;
-}
-
-.grid3{
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:12px;
-}
-
-.stat{
-  background:#0c1423;
-  border:1px solid var(--border);
-  border-radius:12px;
-  padding:15px;
-}
-
-.stat span{
-  color:var(--muted);
-  font-size:13px;
-}
-
-.stat strong{
-  display:block;
-  font-size:22px;
-  color:var(--secondary);
-  margin-top:7px;
-}
-
-.dropzone{
-  border:2px dashed #455274;
-  border-radius:15px;
-  padding:35px 15px;
-  text-align:center;
-  background:#10192a;
-  cursor:pointer;
-}
-
-.dropzone:hover{border-color:var(--primary)}
-.dropzone strong{
-  display:block;
-  font-size:17px;
-  margin-bottom:8px;
-}
-
-.file-name{
-  color:var(--secondary);
-  font-size:13px;
-  margin-top:10px;
-  overflow-wrap:anywhere;
-}
-
-.video-preview{
-  width:100%;
-  max-height:360px;
-  object-fit:contain;
-  background:#050912;
-  border:1px solid var(--border);
-  border-radius:12px;
-  margin-top:16px;
-}
-
-.preview-meta{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:10px;
-  flex-wrap:wrap;
-  margin-top:10px;
-}
-
-.preview-meta span{
-  color:var(--muted);
-  font-size:13px;
-}
-
-.progress-track{
-  height:10px;
-  border-radius:20px;
-  background:#253149;
-  overflow:hidden;
-}
-
-.progress-bar{
-  height:100%;
-  width:0%;
-  background:linear-gradient(90deg,var(--primary),var(--secondary));
-  transition:width .4s;
-}
-
-.progress-info{
-  display:flex;
-  justify-content:space-between;
-  gap:10px;
-  margin:12px 0;
-}
-
-.status{
-  color:var(--secondary);
-  font-size:13px;
-}
-
-.result-box{
-  background:#0c1423;
-  border:1px solid var(--border);
-  border-radius:12px;
-  padding:16px;
-  margin:12px 0;
-  white-space:pre-wrap;
-  line-height:1.8;
-  overflow-wrap:anywhere;
-  max-height:420px;
-  overflow:auto;
-}
-
-.result-title{
-  font-weight:800;
-  margin-bottom:8px;
-  color:#b6a8ff;
-}
-
-.actions{
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-  margin-top:12px;
-}
-
-.notice{
-  padding:12px;
-  border-radius:10px;
-  background:#17243a;
-  color:#bdc9df;
-  font-size:13px;
-}
-
-.error{color:var(--danger)}
-.success{color:var(--secondary)}
-
-.table-wrap{overflow-x:auto}
-table{
-  width:100%;
-  border-collapse:collapse;
-  font-size:13px;
-}
-th,td{
-  text-align:left;
-  padding:10px;
-  border-bottom:1px solid var(--border);
-  white-space:nowrap;
-}
-th{color:#b6a8ff}
-
-.qr{
-  max-width:260px;
-  width:100%;
-  border-radius:12px;
-  border:1px solid var(--border);
-  background:white;
-  padding:6px;
-}
-
-#toast{
-  position:fixed;
-  bottom:20px;
-  left:50%;
-  transform:translateX(-50%);
-  background:#253149;
-  color:white;
-  padding:13px 20px;
-  border-radius:12px;
-  z-index:100;
-  display:none;
-  max-width:90%;
-  text-align:center;
-}
-
-footer{
-  text-align:center;
-  color:var(--muted);
-  padding:30px 10px;
-  font-size:13px;
-}
-
-@media(max-width:850px){
-  :root{--sidebar:0px}
-  .sidebar{
-    width:250px;
-    transform:translateX(-100%);
-    transition:transform .25s;
-  }
-  .sidebar.open{transform:translateX(0)}
-  .main-area{
-    margin-left:0;
-    width:100%;
-  }
-  .container{padding:18px}
-  .topbar{padding:0 18px}
-}
-
-@media(max-width:600px){
-  .grid,.grid3{grid-template-columns:1fr}
-  .card{padding:16px}
-  .hero{padding:18px 0}
-}
+:root{--bg:#090d18;--panel:#111827;--panel2:#172033;--text:#f4f6ff;--muted:#9ba8c0;--primary:#795cff;--secondary:#20c9a6;--border:#27334a;--danger:#ff647c;--sidebar:250px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,"Noto Sans Myanmar",sans-serif}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}.app-layout{min-height:100vh;display:flex}
+.sidebar{width:var(--sidebar);position:fixed;inset:0 auto 0 0;background:#0d1422;border-right:1px solid var(--border);padding:22px 15px;display:flex;flex-direction:column;z-index:30;overflow-y:auto;transition:transform .25s}
+.logo{font-size:23px;font-weight:900;letter-spacing:-1px;padding:5px 12px 28px}.logo span{color:var(--primary)}.nav-label{color:#687792;font-size:11px;font-weight:800;letter-spacing:1.5px;padding:15px 12px 8px}
+.nav-item{width:100%;display:flex;align-items:center;gap:12px;padding:12px 13px;margin:3px 0;border:1px solid transparent;border-radius:11px;background:transparent;color:var(--muted);text-align:left;transition:.2s}.nav-item:hover,.nav-item.active{background:#1c2540;border-color:#343b64;color:white}.nav-item.active{box-shadow:inset 3px 0 var(--primary)}
+.sidebar-bottom{margin-top:auto;padding-top:20px}.sidebar-user{border:1px solid var(--border);border-radius:13px;padding:12px;overflow-wrap:anywhere}.sidebar-user strong{display:block;font-size:13px;margin-bottom:5px}.sidebar-user small{color:var(--muted)}
+.main-area{margin-left:var(--sidebar);width:calc(100% - var(--sidebar));min-width:0}.topbar{height:70px;padding:0 30px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);background:#090d18ee;backdrop-filter:blur(15px);position:sticky;top:0;z-index:20}.topbar-title{font-weight:800;display:flex;align-items:center;gap:12px}.topbar-right{display:flex;gap:12px;align-items:center}
+.container{max-width:1250px;margin:auto;padding:28px}.page{display:none}.page.active{display:block}.hero{padding:30px 0}.hero h1{font-size:clamp(30px,5vw,48px);margin:10px 0;letter-spacing:-1.5px}.gradient{background:linear-gradient(90deg,#9a83ff,#27d6b4);color:transparent;background-clip:text}.hero p{color:var(--muted);line-height:1.8;max-width:720px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:17px;padding:22px;margin-bottom:20px}.card h2{font-size:20px;margin:0 0 15px}.card h3{font-size:16px;margin:18px 0 10px}p{color:var(--muted);line-height:1.7}
+.btn{border:0;border-radius:10px;padding:12px 18px;background:var(--primary);color:white;font-weight:750}.btn:hover{filter:brightness(1.12)}.btn:disabled{opacity:.5;cursor:not-allowed}.btn.secondary{background:var(--panel2);border:1px solid var(--border)}.btn.green{background:#087e69}.btn.red{background:#9d334a}.btn.small{padding:8px 12px;font-size:13px}
+input,textarea,select{width:100%;padding:13px 14px;border-radius:10px;border:1px solid var(--border);background:#0c1423;color:var(--text);outline:none;margin:7px 0 13px}input:focus,textarea:focus,select:focus{border-color:var(--primary)}textarea{min-height:130px;resize:vertical}label{font-size:14px;color:#c6d0e3}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}.tab{background:var(--panel2);border:1px solid var(--border);padding:10px 15px;border-radius:10px;color:var(--muted)}.tab.active{background:var(--primary);color:white;border-color:var(--primary)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.stat{background:#0c1423;border:1px solid var(--border);border-radius:12px;padding:15px}.stat span{color:var(--muted);font-size:13px}.stat strong{display:block;font-size:22px;color:var(--secondary);margin-top:7px}
+.dropzone{border:2px dashed #455274;border-radius:15px;padding:35px 15px;text-align:center;background:#10192a;cursor:pointer}.dropzone:hover{border-color:var(--primary)}.dropzone strong{display:block;font-size:17px;margin-bottom:8px}.file-name{color:var(--secondary);font-size:13px;margin-top:10px;overflow-wrap:anywhere}.video-preview{width:100%;max-height:360px;object-fit:contain;background:#050912;border:1px solid
+var(--border);border-radius:12px;margin-top:16px}
+.preview-meta{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}.preview-meta span{color:var(--muted);font-size:13px}.progress-track{height:10px;border-radius:20px;background:#253149;overflow:hidden}.progress-bar{height:100%;width:0%;background:linear-gradient(90deg,var(--primary),var(--secondary));transition:width .4s}.progress-info{display:flex;justify-content:space-between;gap:10px;margin:12px 0}.status{color:var(--secondary);font-size:13px}
+.result-box{background:#0c1423;border:1px solid var(--border);border-radius:12px;padding:16px;margin:12px 0;white-space:pre-wrap;line-height:1.8;overflow-wrap:anywhere;max-height:420px;overflow:auto}.result-title{font-weight:800;margin-bottom:8px;color:#b6a8ff}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.notice{padding:12px;border-radius:10px;background:#17243a;color:#bdc9df;font-size:13px}.error{color:var(--danger)}.success{color:var(--secondary)}
+.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--border);white-space:nowrap}th{color:#b6a8ff}.qr{max-width:260px;width:100%;border-radius:12px;border:1px solid var(--border);background:white;padding:6px}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#253149;color:white;padding:13px 20px;border-radius:12px;z-index:100;display:none;max-width:90%;text-align:center;box-shadow:0 8px 30px #0008}footer{text-align:center;color:var(--muted);padding:30px 10px;font-size:13px}
+@media(max-width:850px){:root{--sidebar:0px}.sidebar{width:250px;transform:translateX(-100%)}.sidebar.open{transform:translateX(0);box-shadow:10px 0 40px #0008}.main-area{margin-left:0;width:100%}.container{padding:18px}.topbar{padding:0 18px}}
+@media(max-width:600px){.grid,.grid3{grid-template-columns:1fr}.card{padding:16px}.hero{padding:18px 0}.topbar{height:62px}.topbar-right .status{display:none}}
 </style>
-</head><body>
+</head>
+<body>
 <div class="app-layout">
-
 <aside class="sidebar" id="sidebar">
   <div class="logo">Deep<span>Clip</span> AI</div>
-
   <div class="nav-label">WORKSPACE</div>
   <button class="nav-item active" onclick="showPage('dashboard',this)">🏠 Dashboard</button>
   <button class="nav-item" onclick="showPage('studio',this)">🎬 Video Studio</button>
   <button class="nav-item" onclick="showPage('tools',this)">✨ AI Tools</button>
   <button class="nav-item" onclick="showPage('projects',this)">📁 Projects</button>
-
   <div class="nav-label">ACCOUNT</div>
   <button class="nav-item" onclick="showPage('premium',this)">💳 Premium & KPay</button>
   <button class="nav-item" onclick="showPage('account',this)">👤 Account</button>
   <button class="nav-item hidden" id="adminNav" onclick="showPage('admin',this)">🛠 Admin Dashboard</button>
-
-  <div class="sidebar-bottom">
-    <div class="sidebar-user">
-      <strong id="sidebarEmail">Not logged in</strong>
-      <small id="sidebarPlan">Free Plan</small>
-    </div>
-    <button class="nav-item" onclick="logout()">↪ Logout</button>
-  </div>
+  <div class="sidebar-bottom"><div class="sidebar-user"><strong id="sidebarEmail">Not logged in</strong><small id="sidebarPlan">Free Plan</small></div><button class="nav-item" onclick="logout()">↪ Logout</button></div>
 </aside>
-
 <div class="main-area">
-<header class="topbar">
-  <div class="topbar-title">
-    <button class="btn secondary small" onclick="toggleSidebar()">☰</button>
-    <span id="pageTitle">Dashboard</span>
-  </div>
-  <div class="topbar-right">
-    <span class="status" id="userLabel"></span>
-    <button class="btn secondary small hidden" id="logoutBtn" onclick="logout()">Logout</button>
-  </div>
-</header>
-
+<header class="topbar"><div class="topbar-title"><button class="btn secondary small" onclick="toggleSidebar()" aria-label="Toggle menu">☰</button><span id="pageTitle">Dashboard</span></div><div class="topbar-right"><span class="status" id="userLabel"></span><button class="btn secondary small hidden" id="logoutBtn" onclick="logout()">Logout</button></div></header>
 <main class="container">
-
-<!-- AUTH -->
 <section class="card" id="authSection">
   <h2 id="authTitle">Login to DeepClip</h2>
-  <div class="tabs">
-    <button class="tab active" id="loginTab" onclick="setAuthMode('login')">Login</button>
-    <button class="tab" id="registerTab" onclick="setAuthMode('register')">Register</button>
-  </div>
-  <form id="authForm">
-    <label>Email</label>
-    <input type="email" id="email" required placeholder="name@example.com">
-    <label>Password</label>
-    <input type="password" id="password" minlength="8" required placeholder="Password">
-    <button class="btn" id="authSubmit" type="submit" style="width:100%">Login</button>
-  </form>
+  <div class="tabs"><button class="tab active" id="loginTab" onclick="setAuthMode('login')">Login</button><button class="tab" id="registerTab" onclick="setAuthMode('register')">Register</button></div>
+  <form id="authForm"><label>Email</label><input type="email" id="email" required autocomplete="email" placeholder="name@example.com"><label>Password</label><input type="password" id="password" minlength="8" required autocomplete="current-password" placeholder="Password"><button class="btn" id="authSubmit" type="submit" style="width:100%">Login</button></form>
 </section>
-
 <div id="appSection" class="hidden">
-
-<!-- DASHBOARD -->
 <section class="page active" id="dashboard">
-  <div class="hero">
-    <div class="status">AI VIDEO INTELLIGENCE PLATFORM</div>
-    <h1>Turn Videos Into <span class="gradient">Knowledge</span></h1>
-    <p>Video တင်ပါ။ DeepClip AI က Recap, Transcript, Subtitle နဲ့ Translation တွေကို ကူညီလုပ်ဆောင်ပေးမယ်။</p>
-    <button class="btn" onclick="showPage('studio')">Start Creating →</button>
-  </div>
-
-  <div class="grid3">
-    <div class="stat"><span>Account</span><strong id="dashRole">User</strong></div>
-    <div class="stat"><span>Available Credits</span><strong id="dashCredits">—</strong></div>
-    <div class="stat"><span>Current Plan</span><strong id="dashPlan">Free</strong></div>
-  </div>
-
-  <div class="card" style="margin-top:20px">
-    <h2>Welcome to DeepClip AI</h2>
-    <p>Video Studio မှာ Video Upload သို့မဟုတ် URL ထည့်ပြီး စတင်နိုင်ပါတယ်။ AI Tools မှာ ဘာသာပြန်ခြင်း၊ AI Voice နဲ့ Audio Transcription ကို အသုံးပြုနိုင်ပါတယ်။</p>
-  </div>
+  <div class="hero"><div class="status">AI VIDEO INTELLIGENCE PLATFORM</div><h1>Turn Videos Into <span class="gradient">Knowledge</span></h1><p>Video တင်ပါ။ DeepClip AI က Recap, Transcript, Subtitle နဲ့ Translation တွေကို ကူညီလုပ်ဆောင်ပေးမယ်။</p><button class="btn" onclick="showPage('studio')">Start Creating →</button></div>
+  <div class="grid3"><div class="stat"><span>Account</span><strong id="dashRole">User</strong></div><div class="stat"><span>Available Credits</span><strong id="dashCredits">—</strong></div><div class="stat"><span>Current Plan</span><strong id="dashPlan">Free</strong></div></div>
+  <div class="card" style="margin-top:20px"><h2>Welcome to DeepClip AI</h2><p>Video Studio မှာ Video Upload သို့မဟုတ် URL ထည့်ပြီး စတင်နိုင်ပါတယ်။ AI Tools မှာ ဘာသာပြန်ခြင်း၊ AI Voice နဲ့ Audio Transcription ကို အသုံးပြုနိုင်ပါတယ်။</p></div>
 </section>
-
-<!-- VIDEO STUDIO -->
 <section class="page" id="studio">
-  <div class="hero">
-    <h1>🎬 Video Studio</h1>
-    <p>Upload လုပ်ပါ၊ URL ထည့်ပါ၊ AI နဲ့ Video ကို လုပ်ဆောင်ပါ။</p>
-  </div>
-
-  <section class="card">
-    <h2>Upload Your Video</h2>
-    <div class="tabs">
-      <button class="tab active" id="uploadTab" onclick="setSourceMode('upload')">Upload Video</button>
-      <button class="tab" id="urlTab" onclick="setSourceMode('url')">Video URL</button>
-    </div>
-
-    <label>Output language</label>
-    <select id="recapLanguage">
-      <option value="my">မြန်မာ</option>
-      <option value="en">English</option>
-      <option value="th">ไทย</option>
-    </select>
-
-    <div class="grid">
-      <div>
-        <label>Video aspect ratio</label>
-        <select id="videoRatio">
-          <option value="9:16">9:16 Vertical</option>
-          <option value="16:9">16:9 Landscape</option>
-          <option value="1:1">1:1 Square</option>
-          <option value="3:4">3:4 Portrait</option>
-        </select>
-      </div>
-      <div>
-        <label>Fit style</label>
-        <select id="fitMode">
-          <option value="crop">Crop to fill</option>
-          <option value="blur">Blur background</option>
-          <option value="contain">Fit with padding</option>
-        </select>
-      </div>
-    </div>
-
-    <label>Processing mode</label>
-    <select id="processMode">
-      <option value="recap">AI Recap + Transcript + Subtitle</option>
-      <option value="subtitle">Subtitle Burn-in Video</option>
-      <option value="pro">Pro Recap</option>
-    </select>
-
-    <div id="uploadPanel">
-      <label>Choose Video</label>
-      <div class="dropzone" id="videoDropzone"
-        onclick="document.getElementById('videoFile').click()"
-        ondragover="event.preventDefault();this.style.borderColor='var(--primary)'"
-        ondragleave="this.style.borderColor=''"
-        ondrop="handleVideoDrop(event)">
-        <strong id="dropzoneTitle">Click to select your video</strong>
-        <span style="color:var(--muted)">MP4, MOV, MKV, WEBM, AVI</span>
-        <div class="file-name" id="fileName">No video selected</div>
-        <video id="videoPreview" class="video-preview hidden" controls playsinline></video>
-        <div class="preview-meta hidden" id="previewMeta">
-          <span id="videoDetails"></span>
-          <button class="btn secondary small" type="button"
-            onclick="event.stopPropagation();clearVideoSelection()">Remove</button>
-        </div>
-      </div>
-
-      <input type="file" id="videoFile"
-        accept="video/*,.mp4,.mov,.mkv,.webm,.avi" class="hidden">
-
-      <button class="btn" style="width:100%;margin-top:15px"
-        id="uploadBtn" onclick="uploadVideo()">Start AI Processing</button>
-    </div>
-
-    <div id="urlPanel" class="hidden">
-      <label>Video Website URL</label>
-      <input type="url" id="videoUrl" placeholder="https://example.com/video">
-      <div class="notice">Public URL အချို့ကိုသာ ပံ့ပိုးနိုင်ပါတယ်။ DRM၊ Login လိုအပ်သော သို့မဟုတ် ကန့်သတ်ထားသော Video များ မရနိုင်ပါ။</div>
-      <button class="btn" style="width:100%;margin-top:15px"
-        id="urlBtn" onclick="submitUrl()">Process Video URL</button>
-    </div>
-  </section>
-
-  <section class="card hidden" id="processingCard">
-    <h2>AI Processing</h2>
-    <div class="progress-info">
-      <span id="processMessage">Preparing...</span>
-      <strong id="progressNumber">Working</strong>
-    </div>
-    <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
-    <p id="jobStatus" class="status">Processing...</p>
-    <div class="notice">Processing ပြီးဆုံးသည်အထိ ဒီစာမျက်နှာကို ဖွင့်ထားပါ။</div>
-  </section>
-
-  <section class="card hidden" id="resultsCard">
-    <h2><span class="success">✓</span> Processing Completed</h2>
-    <div class="grid">
-      <div>
-        <div class="result-title">AI Recap</div>
-        <div class="result-box" id="recapResult"></div>
-      </div>
-      <div>
-        <div class="result-title">Original Recap</div>
-        <div class="result-box" id="originalRecapResult"></div>
-      </div>
-    </div>
-    <div class="result-title">Full Transcript</div>
-    <div class="result-box" id="transcriptResult"></div>
-    <div class="result-title">Translation</div>
-    <div class="result-box" id="translationResult"></div>
-    <div id="highlightNote" class="notice hidden"></div>
-    <div class="actions">
-      <button class="btn green" onclick="downloadJobFile('recap')">Download Recap</button>
-      <button class="btn secondary" onclick="downloadJobFile('subtitles')">Download SRT</button>
-      <button class="btn secondary" onclick="downloadJobFile('video')">Download Video</button>
-      <button class="btn secondary" onclick="copyTranscript()">Copy Transcript</button>
-    </div>
-  </section>
+  <div class="hero"><h1>🎬 Video Studio</h1><p>Upload လုပ်ပါ၊ URL ထည့်ပါ၊ AI နဲ့ Video ကို လုပ်ဆောင်ပါ။</p></div>
+  <section class="card"><h2>Upload Your Video</h2><div class="tabs"><button class="tab active" id="uploadTab" onclick="setSourceMode('upload')">Upload Video</button><button class="tab" id="urlTab" onclick="setSourceMode('url')">Video URL</button></div>
+  <label>Output language</label><select id="recapLanguage"><option value="my">မြန်မာ</option><option value="en">English</option><option value="th">ไทย</option></select>
+  <div class="grid"><div><label>Video aspect ratio</label><select id="videoRatio"><option value="9:16">9:16 Vertical</option><option value="16:9">16:9 Landscape</option><option value="1:1">1:1 Square</option><option value="3:4">3:4 Portrait</option></select></div><div><label>Fit style</label><select id="fitMode"><option value="crop">Crop to fill</option><option value="blur">Blur background</option><option value="contain">Fit with padding</option></select></div></div>
+  <label>Processing mode</label><select id="processMode"><option value="recap">AI Recap + Transcript + Subtitle</option><option value="subtitle">Subtitle Burn-in Video</option><option value="pro">Pro Recap</option></select>
+  <div id="uploadPanel"><label>Choose Video</label><div class="dropzone" id="videoDropzone" onclick="document.getElementById('videoFile').click()" ondragover="event.preventDefault();this.style.borderColor='var(--primary)'" ondragleave="this.style.borderColor=''" ondrop="handleVideoDrop(event)"><strong id="dropzoneTitle">Click to select your video</strong><span style="color:var(--muted)">MP4, MOV, MKV, WEBM, AVI</span><div class="file-name" id="fileName">No video selected</div><video id="videoPreview" class="video-preview hidden" controls playsinline></video><div class="preview-meta hidden" id="previewMeta"><span id="videoDetails"></span><button class="btn secondary small" type="button" onclick="event.stopPropagation();clearVideoSelection()">Remove</button></div></div>
+  <input type="file" id="videoFile" accept="video/*,.mp4,.mov,.mkv,.webm,.avi" class="hidden"><button class="btn" style="width:100%;margin-top:15px" id="uploadBtn" onclick="uploadVideo()">Start AI Processing</button></div>
+  <div id="urlPanel" class="hidden"><label>Video Website URL</label><input type="url" id="videoUrl" placeholder="https://example.com/video"><div class="notice">Public URL အချို့ကိုသာ ပံ့ပိုးနိုင်ပါတယ်။ DRM၊ Login လိုအပ်သော သို့မဟုတ် ကန့်သတ်ထားသော Video များ မရနိုင်ပါ။</div><button class="btn" style="width:100%;margin-top:15px" id="urlBtn" onclick="submitUrl()">Process Video URL</button></div></section>
+  <section class="card hidden" id="processingCard"><h2>AI Processing</h2><div class="progress-info"><span id="processMessage">Preparing...</span><strong id="progressNumber">Working</strong></div><div class="progress-track"><div class="progress-bar" id="progressBar"></div></div><p id="jobStatus" class="status">Processing...</p><div class="notice">Processing ပြီးဆုံးသည်အထိ ဒီစာမျက်နှာကို ဖွင့်ထားပါ။</div></section>
+  <section class="card hidden" id="resultsCard"><h2><span class="success">✓</span> Processing Completed</h2><div class="grid"><div><div class="result-title">AI Recap</div><div class="result-box" id="recapResult"></div></div><div><div class="result-title">Original Recap</div><div class="result-box" id="originalRecapResult"></div></div></div><div class="result-title">Full Transcript</div><div class="result-box" id="transcriptResult"></div><div class="result-title">Translation</div><div class="result-box" id="translationResult"></div><div id="highlightNote" class="notice hidden"></div><div class="actions"><button class="btn green" onclick="downloadJobFile('recap')">Download Recap</button><button class="btn secondary" onclick="downloadJobFile('subtitles')">Download SRT</button><button class="btn secondary" onclick="downloadJobFile('video')">Download Video</button><button class="btn secondary" onclick="copyTranscript()">Copy Transcript</button></div></section>
 </section>
-
-<!-- AI TOOLS -->
-<section class="page" id="tools">
-  <div class="hero"><h1>✨ AI Tools Studio</h1><p>Translation, AI Voice နဲ့ Audio-to-Text Tools များ။</p></div>
-  <section class="card">
-    <div class="tabs">
-      <button class="tab active" id="translateToolTab" onclick="setTool('translate')">Translator</button>
-      <button class="tab" id="ttsToolTab" onclick="setTool('tts')">AI Voice</button>
-      <button class="tab" id="transcribeToolTab" onclick="setTool('transcribe')">Audio to Text</button>
-    </div>
-
-    <div id="translateTool">
-      <label>Text to translate</label>
-      <textarea id="translateInput" placeholder="ဘာသာပြန်လိုသော စာသားထည့်ပါ..."></textarea>
-      <label>Target language</label>
-      <select id="targetLanguage">
-        <option value="my">Burmese</option>
-        <option value="en">English</option>
-        <option value="th">Thai</option>
-      </select>
-      <button class="btn" id="translateBtn" onclick="translateText()">Translate</button>
-      <div id="translationOutput" class="result-box hidden"></div>
-    </div>
-
-    <div id="ttsTool" class="hidden">
-      <label>Text for AI Voice</label>
-      <textarea id="ttsInput" placeholder="အသံထုတ်လိုသော စာသားထည့်ပါ..."></textarea>
-      <label>Voice</label>
-      <select id="ttsVoice">
-        <option value="alloy">Alloy</option>
-        <option value="echo">Echo</option>
-        <option value="fable">Fable</option>
-        <option value="onyx">Onyx</option>
-        <option value="nova">Nova</option>
-        <option value="shimmer">Shimmer</option>
-      </select>
-      <button class="btn" id="ttsBtn" onclick="generateVoice()">Generate Voice</button>
-      <div id="audioOutput" class="hidden" style="margin-top:15px">
-        <audio id="audioPlayer" controls style="width:100%"></audio>
-        <button class="btn secondary small" onclick="downloadAudio()">Download Audio</button>
-      </div>
-    </div>
-
-    <div id="transcribeTool" class="hidden">
-      <label>Audio file</label>
-      <input type="file" id="audioFile" accept="audio/*">
-      <button class="btn" id="transcribeBtn" onclick="transcribeAudio()">Transcribe Audio</button>
-      <div id="transcribeOutput" class="result-box hidden"></div>
-    </div>
-  </section>
-</section>
-
-<!-- PROJECTS -->
-<section class="page" id="projects">
-  <div class="hero"><h1>📁 Projects</h1><p>ဒီ Browser ထဲမှာ သိမ်းထားတဲ့ လုပ်ဆောင်မှုမှတ်တမ်းများ။</p></div>
-  <section class="card">
-    <div id="projectsList" class="result-box">No projects yet.</div>
-    <button class="btn secondary small" onclick="clearProjects()">Clear History</button>
-  </section>
-</section>
-
-<!-- PREMIUM -->
-<section class="page" id="premium">
-  <div class="hero"><h1>💳 Premium & KPay</h1><p>Premium အကောင့်နှင့် Credit အချက်အလက်များ။</p></div>
-  <section class="card">
-    <div class="notice" id="premiumPrice">Premium price loading...</div>
-    <p>ငွေလွှဲပြီးကြောင်း Admin က စစ်ဆေးပြီးမှ Premium ဖွင့်ပေးနိုင်ပါတယ်။</p>
-    <div id="paymentQrWrap" class="hidden">
-      <h3>KPay Payment QR</h3>
-      <img id="paymentQr" class="qr" alt="KPay payment QR">
-      <p>ငွေလွှဲပြီးပါက Admin ထံ ဆက်သွယ်၍ အတည်ပြုချက်ရယူပါ။</p>
-    </div>
-  </section>
-</section>
-
-<!-- ACCOUNT -->
-<section class="page" id="account">
-  <div class="hero"><h1>👤 Account</h1><p>သင့်အကောင့် အချက်အလက်များ။</p></div>
-  <section class="card">
-    <div class="grid3">
-      <div class="stat"><span>Email</span><strong id="accountEmail" style="font-size:14px;overflow-wrap:anywhere">—</strong></div>
-      <div class="stat"><span>Role</span><strong id="accountRole">User</strong></div>
-      <div class="stat"><span>Credits</span><strong id="creditCount">—</strong></div>
-    </div>
-    <p id="planStatus">Free</p>
-    <button class="btn red" onclick="logout()">Logout</button>
-  </section>
-</section>
-
-<!-- ADMIN -->
-<section class="page" id="admin">
-  <div class="hero"><h1>🛠 Admin Dashboard</h1><p>User, Credit, Premium နဲ့ KPay QR Management။</p></div>
-  <section class="card">
-    <button class="btn secondary small" onclick="loadAdmin()">Refresh Overview</button>
-    <div id="adminOverview" class="result-box">Admin data not loaded.</div>
-
-    <h3>Manage User Credits</h3>
-    <label>User ID</label>
-    <input type="number" id="adminUserId" min="1" placeholder="User ID">
-    <label>Credit amount (+/-)</label>
-    <input type="number" id="adminCreditAmount" placeholder="e.g. 10 or -2">
-    <button class="btn" onclick="adminUpdateCredits()">Update Credits</button>
-
-    <h3>Premium Access</h3>
-    <select id="adminPremiumEnabled">
-      <option value="1">Enable</option>
-      <option value="0">Disable</option>
-    </select>
-    <button class="btn" onclick="adminUpdatePremium()">Update Premium</button>
-
-    <h3>Upload KPay QR</h3>
-    <input type="file" id="adminQrFile" accept="image/png,image/jpeg,image/webp">
-    <button class="btn" onclick="adminUploadQr()">Upload QR</button>
-  </section>
-</section>
-
+<section class="page" id="tools"><div class="hero"><h1>✨ AI Tools Studio</h1><p>Translation, AI Voice နဲ့ Audio-to-Text Tools များ။</p></div><section class="card"><div class="tabs"><button class="tab active" id="translateToolTab" onclick="setTool('translate')">Translator</button><button class="tab" id="ttsToolTab" onclick="setTool('tts')">AI Voice</button><button class="tab" id="transcribeToolTab" onclick="setTool('transcribe')">Audio to Text</button></div>
+<div id="translateTool"><label>Text to translate</label><textarea id="translateInput" placeholder="ဘာသာပြန်လိုသော စာသားထည့်ပါ..."></textarea><label>Target language</label><select id="targetLanguage"><option value="my">Burmese</option><option value="en">English</option><option value="th">Thai</option></select><button class="btn" id="translateBtn" onclick="translateText()">Translate</button><div id="translationOutput" class="result-box hidden"></div></div>
+<div id="ttsTool" class="hidden"><label>Text for AI Voice</label><textarea id="ttsInput" placeholder="အသံထုတ်လိုသော စာသားထည့်ပါ..."></textarea><label>Voice</label><select id="ttsVoice"><option value="alloy">Alloy</option><option value="echo">Echo</option><option value="fable">Fable</option><option value="onyx">Onyx</option><option value="nova">Nova</option><option value="shimmer">Shimmer</option></select><button class="btn" id="ttsBtn" onclick="generateVoice()">Generate Voice</button><div id="audioOutput" class="hidden" style="margin-top:15px"><audio id="audioPlayer" controls style="width:100%"></audio><button class="btn secondary small"
+onclick="downloadAudio()">Download Audio</button></div></div>
+<div id="transcribeTool" class="hidden"><label>Audio file</label><input type="file" id="audioFile" accept="audio/*"><button class="btn" id="transcribeBtn" onclick="transcribeAudio()">Transcribe Audio</button><div id="transcribeOutput" class="result-box hidden"></div></div></section></section>
+<section class="page" id="projects"><div class="hero"><h1>📁 Projects</h1><p>ဒီ Browser ထဲမှာ သိမ်းထားတဲ့ လုပ်ဆောင်မှုမှတ်တမ်းများ။</p></div><section class="card"><div id="projectsList" class="result-box">No projects yet.</div><button class="btn secondary small" onclick="clearProjects()">Clear History</button></section></section>
+<section class="page" id="premium"><div class="hero"><h1>💳 Premium & KPay</h1><p>Premium အကောင့်နှင့် Credit အချက်အလက်များ။</p></div><section class="card"><div class="notice" id="premiumPrice">Premium price loading...</div><p>ငွေလွှဲပြီးကြောင်း Admin က စစ်ဆေးပြီးမှ Premium ဖွင့်ပေးနိုင်ပါတယ်။</p><div id="paymentQrWrap" class="hidden"><h3>KPay Payment QR</h3><img id="paymentQr" class="qr" alt="KPay payment QR"><p>ငွေလွှဲပြီးပါက Admin ထံ ဆက်သွယ်၍ အတည်ပြုချက်ရယူပါ။</p></div></section></section>
+<section class="page" id="account"><div class="hero"><h1>👤 Account</h1><p>သင့်အကောင့် အချက်အလက်များ။</p></div><section class="card"><div class="grid3"><div class="stat"><span>Email</span><strong id="accountEmail" style="font-size:14px;overflow-wrap:anywhere">—</strong></div><div class="stat"><span>Role</span><strong id="accountRole">User</strong></div><div class="stat"><span>Credits</span><strong id="creditCount">—</strong></div></div><p id="planStatus">Free</p><button class="btn red" onclick="logout()">Logout</button></section></section>
+<section class="page" id="admin"><div class="hero"><h1>🛠 Admin Dashboard</h1><p>User, Credit, Premium နဲ့ KPay QR Management။</p></div><section class="card"><button class="btn secondary small" onclick="loadAdmin()">Refresh Overview</button><div id="adminOverview" class="result-box">Admin data not loaded.</div><h3>Manage User Credits</h3><label>User ID</label><input type="number" id="adminUserId" min="1" placeholder="User ID"><label>Credit amount (+/-)</label><input type="number" id="adminCreditAmount" placeholder="e.g. 10 or -2"><button class="btn" onclick="adminUpdateCredits()">Update Credits</button><h3>Premium Access</h3><select id="adminPremiumEnabled"><option value="1">Enable</option><option value="0">Disable</option></select><button class="btn" onclick="adminUpdatePremium()">Update Premium</button><h3>Upload KPay QR</h3><input type="file" id="adminQrFile" accept="image/png,image/jpeg,image/webp"><button class="btn" onclick="adminUploadQr()">Upload QR</button></section></section>
 </div>
-</main>
-
-<footer>DeepClip AI · Video Intelligence Platform</footer>
-</div>
-</div>
-
-<div id="toast"></div>
-
+</main><footer>DeepClip AI · Video Intelligence Platform</footer></div></div><div id="toast" role="status" aria-live="polite"></div>
 <script>
 "use strict";
-
 const API="";
-let token=localStorage.getItem("deepclip_token")||"";
-let authMode="login",sourceMode="upload",toolMode="translate";
-let latestTranscript="",audioBlob=null,currentAudioUrl=null;
-let downloadPaths={},currentUser=null,currentVideoUrl=null;
-
+let token=localStorage.getItem("deepclip_token")||"",authMode="login",sourceMode="upload",toolMode="translate";
+let latestTranscript="",audioBlob=null,currentAudioUrl=null,downloadPaths={},currentUser=null,currentVideoUrl=null,currentQrUrl=null,toastTimer=null;
 const $=id=>document.getElementById(id);
-
-function toast(message){
-  const el=$("toast");
-  el.textContent=message;
-  el.style.display="block";
-  clearTimeout(window.toastTimer);
-  window.toastTimer=setTimeout(()=>el.style.display="none",3800);
-}
-
-function setBusy(button,busy,text){
-  button.disabled=busy;
-  if(busy){
-    button.dataset.original=button.textContent;
-    button.textContent=text||"Please wait...";
-  }else{
-    button.textContent=button.dataset.original||button.textContent;
-  }
-}
-
+function toast(message){const el=$("toast");el.textContent=String(message||"Something went wrong");el.style.display="block";clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.style.display="none",3800)}
+function setBusy(button,busy,text){if(!button)return;button.disabled=busy;if(busy){button.dataset.original=button.textContent;button.textContent=text||"Please wait..."}else{button.textContent=button.dataset.original||button.textContent}}
 async function api(path,options={}){
-  const headers=new Headers(options.headers||{});
-  if(token)headers.set("Authorization","Bearer "+token);
+  const headers=new Headers(options.headers||{});if(token)headers.set("Authorization","Bearer "+token);
   const response=await fetch(API+path,{...options,headers});
   const ct=response.headers.get("content-type")||"";
-
-  if(!response.ok){
-    let msg="Request failed ("+response.status+")";
-    try{
-      const d=await response.json();
-      msg=d.detail||d.message||msg;
-    }catch{}
-    if(response.status===401&&token)logout(false);
-    throw new Error(msg);
-  }
-
+  if(!response.ok){let msg="Request failed ("+response.status+")";try{const d=await response.json();msg=d.detail||d.message||msg}catch{}if(response.status===401&&token){clearSession();}throw new Error(msg)}
   return ct.includes("application/json")?response.json():response;
 }
-
-function formData(entries){
-  const d=new FormData();
-  for(const [k,v] of Object.entries(entries))d.append(k,v);
-  return d;
-}
-
-function toggleSidebar(){
-  $("sidebar").classList.toggle("open");
-}
-
+function formData(entries){const d=new FormData();for(const [k,v] of Object.entries(entries))d.append(k,v);return d}
+function toggleSidebar(){$("sidebar").classList.toggle("open")}
 function showPage(page,button){
-  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
-  const target=$(page);
-  if(target)target.classList.add("active");
-
-  document.querySelectorAll(".nav-item").forEach(n=>n.classList.remove("active"));
-  if(button)button.classList.add("active");
-
-  const titles={
-    dashboard:"Dashboard",
-    studio:"Video Studio",
-    tools:"AI Tools Studio",
-    projects:"Projects",
-    premium:"Premium & KPay",
-    account:"Account",
-    admin:"Admin Dashboard"
-  };
-
-  $("pageTitle").textContent=titles[page]||"DeepClip";
-  $("sidebar").classList.remove("open");
-  window.scrollTo({top:0,behavior:"smooth"});
+  if(page==="admin"&&currentUser?.role!=="admin"){toast("Admin access required");return}
+  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));const target=$(page);if(target)target.classList.add("active");
+  document.querySelectorAll(".nav-item").forEach(n=>n.classList.remove("active"));if(button)button.classList.add("active");
+  const titles={dashboard:"Dashboard",studio:"Video Studio",tools:"AI Tools Studio",projects:"Projects",premium:"Premium & KPay",account:"Account",admin:"Admin Dashboard"};
+  $("pageTitle").textContent=titles[page]||"DeepClip";$("sidebar").classList.remove("open");window.scrollTo({top:0,behavior:"smooth"});
 }
-
-function setAuthMode(mode){
-  authMode=mode;
-  $("authTitle").textContent=mode==="login"?"Login to DeepClip":"Create Account";
-  $("authSubmit").textContent=mode==="login"?"Login":"Create Account";
-  $("loginTab").classList.toggle("active",mode==="login");
-  $("registerTab").classList.toggle("active",mode==="register");
-}
-
+function setAuthMode(mode){authMode=mode;$("authTitle").textContent=mode==="login"?"Login to DeepClip":"Create Account";$("authSubmit").textContent=mode==="login"?"Login":"Create Account";$("loginTab").classList.toggle("active",mode==="login");$("registerTab").classList.toggle("active",mode==="register");$("password").autocomplete=mode==="login"?"current-password":"new-password"}
 $("authForm").addEventListener("submit",async e=>{
-  e.preventDefault();
-  const b=$("authSubmit");
-  setBusy(b,true,"Please wait...");
-
-  try{
-    const d=formData({
-      email:$("email").value.trim(),
-      password:$("password").value
-    });
-
-    const r=await api(authMode==="login"?"/api/login":"/api/register",{
-      method:"POST",
-      body:d
-    });
-
-    token=r.token;
-    localStorage.setItem("deepclip_token",token);
-    await showApp();
-    toast("Login successful");
-  }catch(err){
-    toast(err.message);
-  }finally{
-    setBusy(b,false);
-  }
+  e.preventDefault();const b=$("authSubmit");setBusy(b,true,"Please wait...");
+  try{const d=formData({email:$("email").value.trim(),password:$("password").value});const r=await api(authMode==="login"?"/api/login":"/api/register",{method:"POST",body:d});if(!r.token)throw new Error("Server response မှာ session token မပါဝင်ပါ");token=r.token;localStorage.setItem("deepclip_token",token);await showApp();toast(authMode==="login"?"Login successful":"Account created")}
+  catch(err){toast(err.message)}finally{setBusy(b,false)}
 });
-
+function clearSession(){
+  token="";localStorage.removeItem("deepclip_token");currentUser=null;
+  $("authSection").classList.remove("hidden");$("appSection").classList.add("hidden");$("userLabel").textContent="";$("adminNav").classList.add("hidden");
+}
 async function showApp(){
-  try{
-    const r=await api("/api/me");
-    currentUser=r.user||r;
-
-    $("authSection").classList.add("hidden");
-    $("appSection").classList.remove("hidden");
-
-    $("adminNav").classList.toggle("hidden",currentUser.role!=="admin");
-    $("sidebarEmail").textContent=currentUser.email||"User";
-    $("userLabel").textContent=currentUser.email||"";
-
-    renderUser();
-    loadConfig();
-    loadPaymentQr();
-    renderProjects();
-
-    if(currentUser.role==="admin")loadAdmin();
-
+  try{const r=await api("/api/me");currentUser=r.user||r;if(!currentUser)throw new Error("Invalid account response");
+    $("authSection").classList.add("hidden");$("appSection").classList.remove("hidden");
+    $("adminNav").classList.toggle("hidden",currentUser.role!=="admin");$("sidebarEmail").textContent=currentUser.email||"User";$("userLabel").textContent=currentUser.email||"";
+    renderUser();renderProjects();showPage("dashboard",document.querySelector('.nav-item[onclick*="dashboard"]'));
+    loadConfig();loadPaymentQr();if(currentUser.role==="admin")loadAdmin();
   }catch(e){
-    logout(false);
+    if(!token){clearSession();return}
+    // Network/server errors do not erase a potentially valid session.
+    $("authSection").classList.add("hidden");$("appSection").classList.remove("hidden");
+    $("jobStatus").textContent="Account verification မအောင်မြင်ပါ: "+e.message;
+    toast("Server ကို ဆက်သွယ်မရပါ။ ခဏနေရင် ပြန်စမ်းပါ။");
   }
 }
-
-function renderUser(){
-  if(!currentUser)return;
-
-  const role=currentUser.role==="admin"?"Admin":"User";
-  const credits=currentUser.credits??0;
-  const plan=currentUser.is_premium?"Premium":"Free";
-
-  $("dashRole").textContent=role;
-  $("dashCredits").textContent=credits;
-  $("dashPlan").textContent=plan;
-
-  $("accountRole").textContent=role;
-  $("creditCount").textContent=credits;
-  $("planStatus").textContent=plan;
-  $("accountEmail").textContent=currentUser.email||"—";
-
-  $("sidebarPlan").textContent=plan+" · "+credits+" Credits";
-}
-
-async function refreshUser(){
-  const r=await api("/api/me");
-  currentUser=r.user||r;
-  renderUser();
-}
-
-async function logout(showMessage=true){
-  try{
-    if(token)await api("/api/logout",{method:"POST"});
-  }catch{}
-
-  token="";
-  localStorage.removeItem("deepclip_token");
-  currentUser=null;
-
-  $("authSection").classList.remove("hidden");
-  $("appSection").classList.add("hidden");
-  $("userLabel").textContent="";
-
-  if(showMessage)toast("Logged out");
-}
-
-function setSourceMode(mode){
-  sourceMode=mode;
-  $("uploadPanel").classList.toggle("hidden",mode!=="upload");
-  $("urlPanel").classList.toggle("hidden",mode!=="url");
-  $("uploadTab").classList.toggle("active",mode==="upload");
-  $("urlTab").classList.toggle("active",mode==="url");
-}
-
-function formatDuration(seconds){
-  if(!Number.isFinite(seconds)||seconds<0)return"Duration unavailable";
-  const s=Math.floor(seconds);
-  const h=Math.floor(s/3600);
-  const m=Math.floor((s%3600)/60);
-  const r=s%60;
-  return h?`${h}:${String(m).padStart(2,"0")}:${String(r).padStart(2,"0")}`:`${m}:${String(r).padStart(2,"0")}`;
-}
-
+function renderUser(){if(!currentUser)return;const role=currentUser.role==="admin"?"Admin":"User",credits=currentUser.credits??0,plan=currentUser.is_premium?"Premium":"Free";$("dashRole").textContent=role;$("dashCredits").textContent=credits;$("dashPlan").textContent=plan;$("accountRole").textContent=role;$("creditCount").textContent=credits;$("planStatus").textContent=plan;$("accountEmail").textContent=currentUser.email||"—";$("sidebarPlan").textContent=plan+" · "+credits+" Credits"}
+async function refreshUser(){const r=await api("/api/me");currentUser=r.user||r;renderUser()}
+async function logout(showMessage=true){try{if(token)await api("/api/logout",{method:"POST"})}catch{}clearSession();if(showMessage)toast("Logged out")}
+function setSourceMode(mode){sourceMode=mode;$("uploadPanel").classList.toggle("hidden",mode!=="upload");$("urlPanel").classList.toggle("hidden",mode!=="url");$("uploadTab").classList.toggle("active",mode==="upload");$("urlTab").classList.toggle("active",mode==="url")}
+function formatDuration(seconds){if(!Number.isFinite(seconds)||seconds<0)return"Duration unavailable";const s=Math.floor(seconds),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),r=s%60;return h?`${h}:${String(m).padStart(2,"0")}:${String(r).padStart(2,"0")}`:`${m}:${String(r).padStart(2,"0")}`}
 function setVideoFile(file){
-  if(!file)return;
-
-  if(!file.type.startsWith("video/")&&!/\.(mp4|mov|mkv|webm|avi)$/i.test(file.name)){
-    toast("Video ဖိုင်အမျိုးအစား မှန်ကန်မှုမရှိပါ");
-    return;
-  }
-
-  const input=$("videoFile");
-  try{
-    const dt=new DataTransfer();
-    dt.items.add(file);
-    input.files=dt.files;
-  }catch{}
-
-  if(currentVideoUrl)URL.revokeObjectURL(currentVideoUrl);
-  currentVideoUrl=URL.createObjectURL(file);
-
-  const preview=$("videoPreview");
-  preview.src=currentVideoUrl;
-  preview.classList.remove("hidden");
-  $("previewMeta").classList.remove("hidden");
-
-  $("dropzoneTitle").textContent="Selected Video";
-  $("fileName").textContent=file.name;
-  $("videoDetails").textContent=(file.size/1048576).toFixed(1)+" MB · Duration loading...";
-
-  preview.onloadedmetadata=()=>{
-    $("videoDetails").textContent=(file.size/1048576).toFixed(1)+" MB · "+formatDuration(preview.duration);
-  };
+  if(!file)return;if(!file.type.startsWith("video/")&&!/\.(mp4|mov|mkv|webm|avi)$/i.test(file.name)){toast("Video ဖိုင်အမျိုးအစား မှန်ကန်မှုမရှိပါ");return}
+  try{const dt=new DataTransfer();dt.items.add(file);$("videoFile").files=dt.files}catch{}
+  if(currentVideoUrl)URL.revokeObjectURL(currentVideoUrl);currentVideoUrl=URL.createObjectURL(file);const preview=$("videoPreview");preview.src=currentVideoUrl;preview.classList.remove("hidden");$("previewMeta").classList.remove("hidden");$("dropzoneTitle").textContent="Selected Video";$("fileName").textContent=file.name;$("videoDetails").textContent=(file.size/1048576).toFixed(1)+" MB · Duration loading...";
+  preview.onloadedmetadata=()=>{$("videoDetails").textContent=(file.size/1048576).toFixed(1)+" MB · "+formatDuration(preview.duration)}
 }
-
-$("videoFile").addEventListener("change",()=>{
-  const f=$("videoFile").files[0];
-  if(f)setVideoFile(f);
-});
-
-function handleVideoDrop(event){
-  event.preventDefault();
-  $("videoDropzone").style.borderColor="";
-  const file=event.dataTransfer.files&&event.dataTransfer.files[0];
-  if(file)setVideoFile(file);
-}
-
-function clearVideoSelection(){
-  if(currentVideoUrl)URL.revokeObjectURL(currentVideoUrl);
-  currentVideoUrl=null;
-
-  $("videoFile").value="";
-  $("videoPreview").pause();
-  $("videoPreview").removeAttribute("src");
-  $("videoPreview").load();
-  $("videoPreview").classList.add("hidden");
-  $("previewMeta").classList.add("hidden");
-  $("dropzoneTitle").textContent="Click to select your video";
-  $("fileName").textContent="No video selected";
-}
-
-function processing(on,message="AI processing is running..."){
-  $("processingCard").classList.toggle("hidden",!on);
-  $("processMessage").textContent=message;
-  $("progressNumber").textContent=on?"Working":"100%";
-  $("progressBar").style.width=on?"65%":"100%";
-  $("jobStatus").textContent=on?"Server က Video ကို လုပ်ဆောင်နေပါတယ်။":"Completed";
-}
-
-function recapOptions(){
-  return{
-    language:$("recapLanguage").value,
-    mode:$("processMode").value,
-    ratio:$("videoRatio").value,
-    fit_mode:$("fitMode").value
-  };
-}
-
-async function handleRecap(path,data,button){
-  setBusy(button,true,"Processing...");
-  $("resultsCard").classList.add("hidden");
-  processing(true);
-
-  try{
-    const result=await api(path,{method:"POST",body:data});
-    showResults(result);
-    processing(false);
-    await refreshUser();
-    saveProject(result);
-    toast("Video processing completed");
-  }catch(e){
-    processing(false);
-    $("jobStatus").textContent="Error: "+e.message;
-    toast(e.message);
-  }finally{
-    setBusy(button,false);
-  }
-}
-
-async function uploadVideo(){
-  const file=$("videoFile").files[0];
-  if(!file){toast("Video file ရွေးချယ်ပါ");return;}
-  await handleRecap("/api/recap",formData({file,...recapOptions()}),$("uploadBtn"));
-}
-
-async function submitUrl(){
-  const url=$("videoUrl").value.trim();
-  if(!url){toast("Video URL ထည့်ပါ");return;}
-
-  try{new URL(url)}catch{
-    toast("မှန်ကန်သော URL ထည့်ပါ");
-    return;
-  }
-
-  await handleRecap("/api/recap-url",formData({url,...recapOptions()}),$("urlBtn"));
-}
-
-function showResults(r={}){
-  downloadPaths=r.downloads||{};
-  latestTranscript=r.transcript||"";
-
-  $("recapResult").textContent=r.recap||"No recap available";
-  $("originalRecapResult").textContent=r.original_recap||"No original recap available";
-  $("transcriptResult").textContent=latestTranscript||"No transcript available";
-  $("translationResult").textContent=r.translation||"No translation available";
-
-  $("highlightNote").textContent=r.highlight_note||"";
-  $("highlightNote").classList.toggle("hidden",!r.highlight_note);
-
-  $("resultsCard").classList.remove("hidden");
-  $("resultsCard").scrollIntoView({behavior:"smooth",block:"start"});
-}
-
+$("videoFile").addEventListener("change",()=>{const f=$("videoFile").files[0];if(f)setVideoFile(f)});
+function handleVideoDrop(event){event.preventDefault();$("videoDropzone").style.borderColor="";const file=event.dataTransfer.files&&event.dataTransfer.files[0];if(file)setVideoFile(file)}
+function clearVideoSelection(){if(currentVideoUrl)URL.revokeObjectURL(currentVideoUrl);currentVideoUrl=null;$("videoFile").value="";$("videoPreview").pause();$("videoPreview").removeAttribute("src");$("videoPreview").load();$("videoPreview").classList.add("hidden");$("previewMeta").classList.add("hidden");$("dropzoneTitle").textContent="Click to select your video";$("fileName").textContent="No video selected"}
+function processing(on,message="AI processing is running..."){$("processingCard").classList.toggle("hidden",!on);$("processMessage").textContent=message;$("progressNumber").textContent=on?"Working":"100%";$("progressBar").style.width=on?"65%":"100%";$("jobStatus").textContent=on?"Server က Video ကို လုပ်ဆောင်နေပါတယ်။":"Completed"}
+function recapOptions(){return{language:$("recapLanguage").value,mode:$("processMode").value,ratio:$("videoRatio").value,fit_mode:$("fitMode").value}}
+async function handleRecap(path,data,button){setBusy(button,true,"Processing...");$("resultsCard").classList.add("hidden");processing(true);try{const result=await api(path,{method:"POST",body:data});showResults(result);processing(false);await refreshUser();saveProject(result);toast("Video processing completed")}catch(e){processing(false);$("jobStatus").textContent="Error: "+e.message;toast(e.message)}finally{setBusy(button,false)}}
+async function uploadVideo(){const file=$("videoFile").files[0];if(!file){toast("Video file ရွေးချယ်ပါ");return}await handleRecap("/api/recap",formData({file,...recapOptions()}),$("uploadBtn"))}
+async function submitUrl(){const url=$("videoUrl").value.trim();if(!url){toast("Video URL ထည့်ပါ");return}try{const parsed=new URL(url);if(!["http:","https:"].includes(parsed.protocol))throw new Error()}catch{toast("မှန်ကန်သော HTTP/HTTPS URL ထည့်ပါ");return}await handleRecap("/api/recap-url",formData({url,...recapOptions()}),$("urlBtn"))}
+function showResults(r={}){downloadPaths=r.downloads||{};latestTranscript=r.transcript||"";$("recapResult").textContent=r.recap||"No recap available";$("originalRecapResult").textContent=r.original_recap||"No original recap available";$("transcriptResult").textContent=latestTranscript||"No transcript available";$("translationResult").textContent=r.translation||"No translation available";$("highlightNote").textContent=r.highlight_note||"";$("highlightNote").classList.toggle("hidden",!r.highlight_note);$("resultsCard").classList.remove("hidden");$("resultsCard").scrollIntoView({behavior:"smooth",block:"start"})}
 async function downloadJobFile(kind){
-  const path=downloadPaths[kind==="subtitles"?"srt":kind];
-
-  if(!path){
-    toast("Download မရနိုင်ပါ။");
-    return;
-  }
-
-  try{
-    const res=await api(path);
-    const blob=await res.blob();
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-
-    a.href=url;
-    a.download=kind==="recap"?"deepclip-recap.txt":kind==="subtitles"?"subtitles.srt":"deepclip-export.mp4";
-
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-
-    setTimeout(()=>URL.revokeObjectURL(url),3000);
-  }catch(e){
-    toast(e.message);
-  }
+  // Backend recap responses may expose the text artifact as either "text" or "recap".
+  const key=kind==="subtitles"?"srt":kind;const path=downloadPaths[key]||(kind==="recap"?(downloadPaths.text||downloadPaths.recap):null);
+  if(!path){toast("ဒီဖိုင်အတွက် Download link မရရှိပါ");return}
+  try{const res=await api(path);const blob=await res.blob();const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=kind==="recap"?"deepclip-recap.txt":kind==="subtitles"?"subtitles.srt":"deepclip-export.mp4";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000)}catch(e){toast(e.message)}
 }
-
-async function copyTranscript(){
-  if(!latestTranscript){toast("Transcript မရှိသေးပါ");return;}
-  try{
-    await navigator.clipboard.writeText(latestTranscript);
-    toast("Transcript copied");
-  }catch{
-    toast("Copy failed");
-  }
-}
-
-function setTool(mode){
-  toolMode=mode;
-
-  for(const name of ["translate","tts","transcribe"]){
-    $(name+"Tool").classList.toggle("hidden",name!==mode);
-    $(name+"ToolTab").classList.toggle("active",name===mode);
-  }
-}
-
-async function translateText(){
-  const text=$("translateInput").value.trim();
-  if(!text){toast("Text ထည့်ပါ");return;}
-
-  const b=$("translateBtn");
-  setBusy(b,true,"Translating...");
-
-  try{
-    const r=await api("/api/translate",{
-      method:"POST",
-      body:formData({text,target_language:$("targetLanguage").value})
-    });
-
-    $("translationOutput").textContent=r.translation||r.translated_text||"";
-    $("translationOutput").classList.remove("hidden");
-  }catch(e){
-    toast(e.message);
-  }finally{
-    setBusy(b,false);
-  }
-}
-
-async function generateVoice(){
-  const text=$("ttsInput").value.trim();
-  if(!text){toast("Text ထည့်ပါ");return;}
-
-  const b=$("ttsBtn");
-  setBusy(b,true,"Generating voice...");
-
-  try{
-    const res=await api("/api/tts",{
-      method:"POST",
-      body:formData({text,voice:$("ttsVoice").value})
-    });
-
-    audioBlob=await res.blob();
-
-    if(currentAudioUrl)URL.revokeObjectURL(currentAudioUrl);
-    currentAudioUrl=URL.createObjectURL(audioBlob);
-
-    $("audioPlayer").src=currentAudioUrl;
-    $("audioOutput").classList.remove("hidden");
-    toast("AI Voice generated");
-  }catch(e){
-    toast(e.message);
-  }finally{
-    setBusy(b,false);
-  }
-}
-
-function downloadAudio(){
-  if(!currentAudioUrl){toast("No audio available");return;}
-
-  const a=document.createElement("a");
-  a.href=currentAudioUrl;
-  a.download="deepclip-voice.wav";
-  a.click();
-}
-
-async function transcribeAudio(){
-  const f=$("audioFile").files[0];
-  if(!f){toast("Audio ဖိုင်ရွေးပါ");return;}
-
-  const b=$("transcribeBtn");
-  setBusy(b,true,"Transcribing...");
-
-  try{
-    const r=await api("/api/transcribe",{
-      method:"POST",
-      body:formData({file:f})
-    });
-
-    $("transcribeOutput").textContent=r.text||"No speech detected";
-    $("transcribeOutput").classList.remove("hidden");
-  }catch(e){
-    toast(e.message);
-  }finally{
-    setBusy(b,false);
-  }
-}
-
-function getProjects(){
-  try{return JSON.parse(localStorage.getItem("deepclip_projects")||"[]");}
-  catch{return[];}
-}
-
-function saveProject(r){
-  const p=getProjects();
-
-  p.unshift({
-    date:new Date().toLocaleString(),
-    recap:(r.recap||"").slice(0,260),
-    downloads:r.downloads||{}
-  });
-
-  localStorage.setItem("deepclip_projects",JSON.stringify(p.slice(0,20)));
-  renderProjects();
-}
-
-function renderProjects(){
-  const p=getProjects();
-
-  $("projectsList").textContent=p.length
-    ?p.map((x,i)=>(i+1)+". "+x.date+"\n"+x.recap).join("\n\n")
-    :"No projects yet.";
-}
-
-function clearProjects(){
-  if(!confirm("Project history ကို ဖျက်မှာ သေချာပါသလား။"))return;
-  localStorage.removeItem("deepclip_projects");
-  renderProjects();
-}
-
-async function loadConfig(){
-  try{
-    const c=await api("/api/config");
-    $("premiumPrice").textContent=
-      "Premium price: "+Number(c.premium_price_ks||0).toLocaleString()+
-      " MMK · Starter credits: "+(c.starter_credits??0)+
-      " · Max upload: "+(c.max_upload_mb??"—")+" MB";
-  }catch{
-    $("premiumPrice").textContent="Premium information unavailable";
-  }
-}
-
+async function copyTranscript(){if(!latestTranscript){toast("Transcript မရှိသေးပါ");return}try{await navigator.clipboard.writeText(latestTranscript);toast("Transcript copied")}catch{toast("Copy failed")}}
+function setTool(mode){toolMode=mode;for(const name of ["translate","tts","transcribe"]){$(name+"Tool").classList.toggle("hidden",name!==mode);$(name+"ToolTab").classList.toggle("active",name===mode)}}
+async function translateText(){const text=$("translateInput").value.trim();if(!text){toast("Text ထည့်ပါ");return}const b=$("translateBtn");setBusy(b,true,"Translating...");try{const r=await api("/api/translate",{method:"POST",body:formData({text,target_language:$("targetLanguage").value})});$("translationOutput").textContent=r.translation||r.translated_text||"";$("translationOutput").classList.remove("hidden")}catch(e){toast(e.message)}finally{setBusy(b,false)}}
+async function generateVoice(){const text=$("ttsInput").value.trim();if(!text){toast("Text ထည့်ပါ");return}const b=$("ttsBtn");setBusy(b,true,"Generating voice...");try{const res=await api("/api/tts",{method:"POST",body:formData({text,voice:$("ttsVoice").value})});audioBlob=await res.blob();if(currentAudioUrl)URL.revokeObjectURL(currentAudioUrl);currentAudioUrl=URL.createObjectURL(audioBlob);$("audioPlayer").src=currentAudioUrl;$("audioOutput").classList.remove("hidden");toast("AI Voice generated")}catch(e){toast(e.message)}finally{setBusy(b,false)}}
+function downloadAudio(){if(!currentAudioUrl){toast("No audio available");return}const a=document.createElement("a");a.href=currentAudioUrl;a.download="deepclip-voice.wav";a.click()}
+async function transcribeAudio(){const f=$("audioFile").files[0];if(!f){toast("Audio ဖိုင်ရွေးပါ");return}const b=$("transcribeBtn");setBusy(b,true,"Transcribing...");try{const r=await api("/api/transcribe",{method:"POST",body:formData({file:f})});$("transcribeOutput").textContent=r.text||"No speech detected";$("transcribeOutput").classList.remove("hidden")}catch(e){toast(e.message)}finally{setBusy(b,false)}}
+function getProjects(){try{return JSON.parse(localStorage.getItem("deepclip_projects")||"[]")}catch{return[]}}
+function saveProject(r){const p=getProjects();p.unshift({date:new Date().toLocaleString(),recap:(r.recap||"").slice(0,260),downloads:r.downloads||{}});localStorage.setItem("deepclip_projects",JSON.stringify(p.slice(0,20)));renderProjects()}
+function renderProjects(){const p=getProjects();$("projectsList").textContent=p.length?p.map((x,i)=>(i+1)+". "+x.date+"\n"+x.recap).join("\n\n"):"No projects yet."}
+function clearProjects(){if(!confirm("Project history ကို ဖျက်မှာ သေချာပါသလား။"))return;localStorage.removeItem("deepclip_projects");renderProjects()}
+async function loadConfig(){try{const c=await api("/api/config");$("premiumPrice").textContent="Premium price: "+Number(c.premium_price_ks||0).toLocaleString()+" MMK · Starter credits: "+(c.starter_credits??0)+" · Max upload: "+(c.max_upload_mb??"—")+" MB"}catch{$("premiumPrice").textContent="Premium information unavailable"}}
 async function loadPaymentQr(){
-  try{
-    const r=await api("/api/payment-qr");
-    const blob=await r.blob();
-
-    $("paymentQr").src=URL.createObjectURL(blob);
-    $("paymentQrWrap").classList.remove("hidden");
-  }catch{
-    $("paymentQrWrap").classList.add("hidden");
-  }
+  try{const r=await api("/api/payment-qr");const blob=await r.blob();const nextUrl=URL.createObjectURL(blob);const oldUrl=currentQrUrl;currentQrUrl=nextUrl;$("paymentQr").src=nextUrl;$("paymentQrWrap").classList.remove("hidden");if(oldUrl)URL.revokeObjectURL(oldUrl)}
+  catch{$("paymentQrWrap").classList.add("hidden")}
 }
-
-async function loadAdmin(){
-  try{
-    const r=await api("/api/admin/overview");
-    const users=r.users||[];
-    const jobs=r.jobs||[];
-
-    let out="USERS ("+users.length+")\n";
-
-    out+=users.map(u=>
-      `ID ${u.id} · ${u.email} · ${u.role} · Credits ${u.credits} · Premium ${u.is_premium?"Yes":"No"}`
-    ).join("\n");
-
-    out+="\n\nRECENT JOBS ("+jobs.length+")\n";
-
-    out+=jobs.map(j=>
-      `${j.id} · User ${j.user_id} · ${j.status} · ${j.created_at}`
-    ).join("\n");
-
-    $("adminOverview").textContent=out||"No records";
-  }catch(e){
-    $("adminOverview").textContent=e.message;
-  }
-}
-
-async function adminUpdateCredits(){
-  const user_id=$("adminUserId").value;
-  const amount=$("adminCreditAmount").value;
-
-  if(!user_id||!amount||Number(amount)===0){
-    toast("User ID နှင့် Credit amount ထည့်ပါ");
-    return;
-  }
-
-  try{
-    await api("/api/admin/credits",{
-      method:"POST",
-      body:formData({user_id,amount})
-    });
-
-    toast("Credits updated");
-    loadAdmin();
-  }catch(e){
-    toast(e.message);
-  }
-}
-
-async function adminUpdatePremium(){
-  const user_id=$("adminUserId").value;
-
-  if(!user_id){
-    toast("User ID ထည့်ပါ");
-    return;
-  }
-
-  try{
-    await api("/api/admin/premium",{
-      method:"POST",
-      body:formData({
-        user_id,
-        enabled:$("adminPremiumEnabled").value
-      })
-    });
-
-    toast("Premium status updated");
-    loadAdmin();
-  }catch(e){
-    toast(e.message);
-  }
-}
-
-async function adminUploadQr(){
-  const file=$("adminQrFile").files[0];
-
-  if(!file){
-    toast("QR image ရွေးပါ");
-    return;
-  }
-
-  try{
-    const r=await api("/api/admin/payment-qr",{
-      method:"POST",
-      body:formData({file})
-    });
-
-    toast(r.message||"QR uploaded");
-    loadPaymentQr();
-  }catch(e){
-    toast(e.message);
-  }
-}
-
-(async function init(){
-  if(token)await showApp();
-})();
+async function loadAdmin(){try{const r=await api("/api/admin/overview");const users=r.users||[],jobs=r.jobs||[];let out="USERS ("+users.length+")\n";out+=users.map(u=>`ID ${u.id} · ${u.email} · ${u.role} · Credits ${u.credits} · Premium ${u.is_premium?"Yes":"No"}`).join("\n");out+="\n\nRECENT JOBS ("+jobs.length+")\n";out+=jobs.map(j=>`${j.id} · User ${j.user_id} · ${j.status} · ${j.created_at}`).join("\n");$("adminOverview").textContent=out||"No records"}catch(e){$("adminOverview").textContent=e.message}}
+async function adminUpdateCredits(){const user_id=$("adminUserId").value,amount=$("adminCreditAmount").value;if(!user_id||!amount||Number(amount)===0){toast("User ID နှင့် Credit amount ထည့်ပါ");return}try{await api("/api/admin/credits",{method:"POST",body:formData({user_id,amount})});toast("Credits updated");await loadAdmin()}catch(e){toast(e.message)}}
+async function adminUpdatePremium(){const user_id=$("adminUserId").value;if(!user_id){toast("User ID ထည့်ပါ");return}try{await api("/api/admin/premium",{method:"POST",body:formData({user_id,enabled:$("adminPremiumEnabled").value})});toast("Premium status updated");await loadAdmin()}catch(e){toast(e.message)}}
+async function adminUploadQr(){const file=$("adminQrFile").files[0];if(!file){toast("QR image ရွေးပါ");return}try{const r=await api("/api/admin/payment-qr",{method:"POST",body:formData({file})});toast(r.message||"QR uploaded");await loadPaymentQr()}catch(e){toast(e.message)}}
+window.addEventListener("beforeunload",()=>{if(currentVideoUrl)URL.revokeObjectURL(currentVideoUrl);if(currentAudioUrl)URL.revokeObjectURL(currentAudioUrl);if(currentQrUrl)URL.revokeObjectURL(currentQrUrl)});
+(async function init(){if(token)await showApp()})();
 </script>
 </body>
 </html>
